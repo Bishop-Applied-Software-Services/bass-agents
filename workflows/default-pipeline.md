@@ -6,22 +6,22 @@ The standard 7-step orchestration workflow for bass-agents. MetaAgent runs this 
 
 ## Agent Availability
 
-| Step | Agent              | Agent File                  | Status    |
-| ---- | ------------------ | --------------------------- | --------- |
-| 1    | PM Agent           | `agents/pm-bassai.agent`    | Available |
-| 2    | Gameplay Expert    | —                           | Pending   |
-| 3    | Designer           | —                           | Pending   |
-| 4    | QA Adversary       | —                           | Pending   |
-| 5    | Coding Agent       | —                           | Pending   |
-| 6    | Evaluator Agent    | —                           | Pending   |
-| 7    | Planner (MetaAgent)| `agents/metaagent.agent`    | Available |
+| Step | Agent              | Agent File                       | Status    |
+| ---- | ------------------ | -------------------------------- | --------- |
+| 1    | PM Agent           | `agents/pm.agent`                | Available |
+| 2    | Gameplay Expert    | `agents/gameplay-expert.agent`   | Available |
+| 3    | Designer           | `agents/designer.agent`          | Available |
+| 4    | QA Adversary       | `agents/qa-adversary.agent`      | Available |
+| 5    | Coding Agent       | `agents/coding-agent.agent`      | Available |
+| 6    | Evaluator Agent    | `agents/evaluator.agent`         | Available |
+| 7    | Planner (MetaAgent)| `agents/metaagent.agent`         | Available |
 
 ---
 
 ## Step 1: PM Agent
 
-- **Agent file:** [`agents/pm-bassai.agent`](../agents/pm-bassai.agent)
-- **Input:** `AgentTask` with a high-level project goal (e.g. "make a game for bass.ai").
+- **Agent file:** [`agents/pm.agent`](../agents/pm.agent)
+- **Input:** `AgentTask` with a high-level project goal.
 - **Output:** `AgentResult` containing 3 concept options, 1 recommendation, MVP acceptance criteria, and risks.
 - **Pass condition:** All `definition_of_done` items satisfied; findings include measurable acceptance criteria.
 - **Handoff:** Result is forwarded to Step 2 (Gameplay Expert) as context in a new `AgentTask`.
@@ -30,7 +30,7 @@ The standard 7-step orchestration workflow for bass-agents. MetaAgent runs this 
 
 ## Step 2: Gameplay Expert
 
-- **Agent file:** *Pending creation*
+- **Agent file:** [`agents/gameplay-expert.agent`](../agents/gameplay-expert.agent)
 - **Input:** `AgentTask` with the PM's recommended concept and acceptance criteria in `context.user_notes`.
 - **Output:** `AgentResult` with mechanics spec, core loop definition, scoring formula, and skill-depth analysis.
 - **Pass condition:** Mechanics are specific enough for a coding agent to implement; scoring formula is deterministic.
@@ -40,19 +40,19 @@ The standard 7-step orchestration workflow for bass-agents. MetaAgent runs this 
 
 ## Step 3: Designer
 
-- **Agent file:** *Pending creation*
+- **Agent file:** [`agents/designer.agent`](../agents/designer.agent)
 - **Input:** `AgentTask` with mechanics spec and brand constraints.
 - **Output:** `AgentResult` with UI layout proposal, visual style guide, asset list, and layout risk findings.
-- **Pass condition:** Layout is implementable with free assets; no unresolved brand conflicts.
+- **Pass condition:** Layout is implementable with declared asset strategy; no unresolved brand conflicts.
 - **Handoff:** Result is forwarded to Step 4 (QA Adversary).
 
 ---
 
 ## Step 4: QA Adversary
 
-- **Agent file:** *Pending creation*
+- **Agent file:** [`agents/qa-adversary.agent`](../agents/qa-adversary.agent)
 - **Input:** `AgentTask` with mechanics spec, UI layout, and acceptance criteria from Steps 1-3.
-- **Output:** `AgentResult` with test plan, edge cases, performance guardrails (FPS floor, input latency, hitbox checks).
+- **Output:** `AgentResult` with test plan, edge cases, performance guardrails.
 - **Pass condition:** Every MVP acceptance criterion has at least one corresponding test case.
 - **Handoff:** Result is forwarded to Step 5 (Coding Agent).
 
@@ -60,7 +60,7 @@ The standard 7-step orchestration workflow for bass-agents. MetaAgent runs this 
 
 ## Step 5: Coding Agent
 
-- **Agent file:** *Pending creation*
+- **Agent file:** [`agents/coding-agent.agent`](../agents/coding-agent.agent)
 - **Input:** `AgentTask` with mechanics spec, UI layout, test plan, and `limits.max_code_diff_lines` set.
 - **Output:** `AgentResult` with a working vertical slice (diff or branch reference), build status, and any blockers.
 - **Pass condition:** Build compiles; at least one QA test passes; diff is within `max_code_diff_lines`.
@@ -70,7 +70,7 @@ The standard 7-step orchestration workflow for bass-agents. MetaAgent runs this 
 
 ## Step 6: Evaluator Agent
 
-- **Agent file:** *Pending creation*
+- **Agent file:** [`agents/evaluator.agent`](../agents/evaluator.agent)
 - **Input:** `AgentTask` with branch/diff reference and test plan from Step 4.
 - **Output:** `AgentResult` with test results, screenshots/logs, performance metrics, and a scorecard.
 - **Pass condition:** Scorecard includes pass/fail for each acceptance criterion; no blocker-severity findings unresolved.
