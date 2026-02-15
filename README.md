@@ -8,16 +8,21 @@ Agent definitions live in `~/.agents/` as plain `.agent` files (markdown) so the
 
 ```
 bass-agents/
-  agents/              # Agent definition files (.agent)
-    metaagent.agent    # Agent factory & orchestrator
-    pm-bassai.agent    # Product Manager agent
-  workflows/           # Pipeline definitions
+  agents/                    # Agent definition files (.agent)
+    metaagent.agent          # Agent factory & orchestrator
+    pm.agent                 # Product Manager
+    gameplay-expert.agent    # Gameplay & mechanics designer
+    designer.agent           # UI/UX & visual design
+    qa-adversary.agent       # Test planning & edge cases
+    coding-agent.agent       # Implementation & vertical slices
+    evaluator.agent          # Build evaluation & scoring
+  workflows/                 # Pipeline definitions
     default-pipeline.md
-  schemas/             # JSON Schema contracts
+  schemas/                   # JSON Schema contracts
     agent-task.schema.json
     agent-result.schema.json
-  install.sh           # Symlink agents into ~/.agents/
-  bass-agents-spec-v0.md  # Full specification
+  install.sh                 # Symlink agents into ~/.agents/
+  bass-agents-spec-v0.md     # Full specification
 ```
 
 ## Quick Start
