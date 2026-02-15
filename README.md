@@ -21,6 +21,10 @@ bass-agents/
   schemas/                   # JSON Schema contracts
     agent-task.schema.json
     agent-result.schema.json
+  field-notes/               # Deployment learnings & feedback loop
+    TEMPLATE.md              # Recommended structure for entries
+    <project-name>/          # One folder per project
+      YYYY-MM-DD-<slug>.md   # One file per session/learning
   install.sh                 # Symlink agents into ~/.agents/
   bass-agents-spec-v0.md     # Full specification
 ```
@@ -69,6 +73,15 @@ Every agent spawned by MetaAgent must follow these constraints:
 - **Small changes**: coding agents cap diffs at 300 lines per iteration
 - **Deterministic output**: use fixed schemas and stable sorting
 - **Safety**: no secrets in logs; flag OWASP-style issues as findings
+
+## Field Notes
+
+The `field-notes/` directory captures deployment learnings — what worked, what broke, and which agents need tuning. This creates a feedback loop from real project usage back into agent improvements.
+
+**Convention:**
+- One folder per project (e.g. `field-notes/acme-app/`)
+- One file per session or learning (e.g. `2026-02-15-initial-pipeline-run.md`)
+- Use [`field-notes/TEMPLATE.md`](field-notes/TEMPLATE.md) as a starting point for each entry
 
 ## Creating a New Agent
 
