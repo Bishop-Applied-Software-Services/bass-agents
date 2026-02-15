@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bass-agents/schemas/agent-task.schema.json",
+  "title": "AgentTask",
+  "description": "Universal input contract for all bass-agents. Every agent receives an AgentTask as its sole input.",
+  "type": "object",
+  "required": ["task_id", "project", "goal", "definition_of_done"],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for this task (UUID or timestamp-based).",
+      "minLength": 1
+    },
+    "project": {
+      "type": "object",
+      "description": "Project metadata and constraints.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo_root": {
+          "type": "string",
+          "description": "Absolute path to the project repository root."
+        },
+        "runtime": {
+          "type": "string",
+          "enum": ["node", "python", "go", "unity", "other"],
+          "description": "Primary runtime/language. Use 'other' for unlisted runtimes."
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Project-level constraints (e.g. 'web-first', 'no paid assets')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "goal": {
+      "type": "string",
+      "description": "Plain-language description of what the agent should accomplish.",
+      "minLength": 1
+    },
+    "context": {
+      "type": "object",
+      "description": "Optional background information, known issues, and supporting artifacts.",
+      "properties": {
+        "user_notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "known_issues": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "artifacts": {
+          "type": "object",
+          "properties": {
+            "screenshots": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "logs": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "test_results": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "definition_of_done": {
+      "type": "array",
+      "description": "Measurable criteria that must all be satisfied for the task to pass.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "limits": {
+      "type": "object",
+      "description": "Resource and scope constraints for this task.",
+      "properties": {
+        "timebox_minutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_code_diff_lines": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 300
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
