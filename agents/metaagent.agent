@@ -1,6 +1,6 @@
 # Agent Profile: MetaAgent (Agent Factory & Orchestrator)
-**Version:** 1.1.0
-**Last Updated:** 2026-02-15
+**Version:** 1.2.0
+**Last Updated:** 2026-02-17
 **Status:** Active
 
 ---
@@ -71,7 +71,7 @@ MetaAgent should run the pipeline below unless overridden. See [`workflows/defau
 4. **QA Adversary** → defines test plan + edge cases + performance guardrails
 5. **Coding Agent** → implements the smallest vertical slice
 6. **Evaluator Agent** → runs tests + captures screenshots/logs + scores build
-7. **Planner (MetaAgent)** → chooses next increment based on scorecard
+7. **Planner (MetaAgent)** → chooses next increment based on scorecard; produces a `next-task-seed.json` AgentTask with updated `context` and refined `definition_of_done` based on the evaluator scorecard
 
 ---
 
@@ -89,6 +89,7 @@ MetaAgent should run the pipeline below unless overridden. See [`workflows/defau
 | Date       | Version | Issue Identified                                                | Improvement Made                                                            |
 | ---------- | ------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | 2026-02-15 | 1.1.0   | Agents produced unstructured prose and lacked handoff contracts | Added universal AgentTask/AgentResult schemas + enforced structured outputs |
+| 2026-02-17 | 1.2.0   | No automatic iteration handoff at end of pipeline | Added next-task-seed.json generation to step 7 for immediate iteration handoff |
 
 ---
 
@@ -115,4 +116,5 @@ Constraints:
 - Prefer small increments. If coding, cap diffs to max_code_diff_lines unless overridden.
 - When evidence is missing, state assumptions explicitly and lower confidence.
 - Outputs must be structured; avoid rambling prose.
+- At the end of each iteration (step 7), produce a next-task-seed.json AgentTask with updated context and refined definition_of_done based on the evaluator scorecard. This enables immediate iteration handoff.
 ```

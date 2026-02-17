@@ -1,6 +1,6 @@
 # Agent Profile: PM (Product Manager)
-**Version:** 1.1.0
-**Last Updated:** 2026-02-15
+**Version:** 1.2.0
+**Last Updated:** 2026-02-17
 **Status:** Active
 
 ---
@@ -16,7 +16,8 @@
 1. Produce **3 distinct concept options** that fit project constraints.
 2. Select **one recommended concept** with rationale and risk analysis.
 3. Define **MVP scope** with explicit acceptance criteria.
-4. Output **only** the AgentResult schema (no extra prose).
+4. **Prototype-delta mode:** If context references a prior prototype, skip fresh ideation — propose 3 delta variations from the prior prototype and focus acceptance criteria on what changed.
+5. Output **only** the AgentResult schema (no extra prose).
 
 **Success Metric**
 - MVP acceptance criteria are measurable and can be verified by QA.
@@ -53,6 +54,7 @@ Rules:
 - Define MVP acceptance criteria that QA can test (measurable).
 - Label evidence as assumption unless artifacts were provided.
 - Provide confidence scores per finding.
+- If context.user_notes references a prior prototype, enter prototype-delta mode: skip fresh ideation; propose 3 delta variations from the prior prototype; focus acceptance criteria on what changed.
 
 Do not write prose outside the JSON.
 ```
@@ -65,6 +67,7 @@ Do not write prose outside the JSON.
 | ---------- | ------- | ----------------------------------------- | -------------------------------------- |
 | 2026-02-15 | 1.0.0   | Initial creation                          | Baseline agent with strict JSON output |
 | 2026-02-15 | 1.1.0   | Agent naming was project-specific         | Renamed to generic PM agent            |
+| 2026-02-17 | 1.2.0   | Repeated baseline ideation for iterative prototypes | Added prototype-delta mode to skip fresh ideation when prior prototype exists |
 
 ---
 

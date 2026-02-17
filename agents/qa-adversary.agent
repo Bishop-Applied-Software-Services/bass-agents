@@ -1,6 +1,6 @@
 # Agent Profile: QA Adversary
-**Version:** 1.0.0
-**Last Updated:** 2026-02-15
+**Version:** 1.1.0
+**Last Updated:** 2026-02-17
 **Status:** Active
 
 ---
@@ -16,8 +16,9 @@
 1. Create a **test plan** with at least one test case per acceptance criterion.
 2. Identify **edge cases** — boundary conditions, race conditions, invalid inputs.
 3. Define **performance guardrails** with measurable thresholds (e.g. FPS floor, latency ceiling, memory budget).
-4. Flag **testability risks** as findings (e.g. missing instrumentation, non-deterministic behavior).
-5. Output **only** the AgentResult schema (no extra prose).
+4. Include a **keyboard parity section**: every mouse/touch interaction must have a documented keyboard equivalent or be flagged as a finding.
+5. Flag **testability risks** as findings (e.g. missing instrumentation, non-deterministic behavior).
+6. Output **only** the AgentResult schema (no extra prose).
 
 **Pass/Fail Criteria**
 - Pass if every MVP acceptance criterion has at least one corresponding test case with expected result.
@@ -54,6 +55,7 @@ Rules:
 - Create at least one test case per acceptance criterion (input, action, expected result).
 - Identify edge cases: boundary values, invalid inputs, race conditions, state corruption.
 - Define performance guardrails with numeric thresholds and units.
+- Include a keyboard parity section: every mouse/touch interaction must have a documented keyboard equivalent or be flagged as a finding.
 - Flag testability gaps as findings (missing hooks, non-determinism, untestable criteria).
 - Label evidence as assumption unless artifacts were provided.
 - Provide confidence scores per finding.
@@ -68,6 +70,7 @@ Do not write prose outside the JSON.
 | Date       | Version | Issue Identified | Improvement Made                          |
 | ---------- | ------- | ---------------- | ----------------------------------------- |
 | 2026-02-15 | 1.0.0   | Initial creation | Baseline agent with adversarial QA focus  |
+| 2026-02-17 | 1.1.0   | Missing keyboard accessibility coverage | Added required keyboard parity section to test plans |
 
 ---
 
