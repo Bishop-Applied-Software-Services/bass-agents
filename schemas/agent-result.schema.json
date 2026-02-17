@@ -13,8 +13,8 @@
     },
     "status": {
       "type": "string",
-      "enum": ["success", "partial", "blocked"],
-      "description": "Overall outcome of the task."
+      "enum": ["pending", "success", "partial", "blocked"],
+      "description": "Overall outcome of the task. Use 'pending' for skeleton results that have not been executed yet."
     },
     "summary": {
       "type": "string",
