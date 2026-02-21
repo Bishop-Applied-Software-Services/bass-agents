@@ -1,0 +1,8 @@
+Script started on Sat Feb 21 17:35:27 2026
+^Dmkdir: /Users/jackbishop/.cache/oh-my-zsh: Operation not permitted
+rm: /Users/jackbishop/.zcompdump-MacBook Air-5.9: Operation not permitted
+/Users/jackbishop/.oh-my-zsh/oh-my-zsh.sh:126: nice(5) failed: operation not permitted
+]1337;RemoteHost=jackbishop@macbookair.lan]1337;CurrentDir=/Users/jackbishop/dev/bass-agents]1337;ShellIntegrationVersion=12;shell=zshzsh: locking failed for /Users/jackbishop/.zsh_history: operation not permitted: reading anyway
+[1m[7m%[27m[1m[0m                                                                                ]2;jackbishop@macbookair:~/dev/bass-agents]1;..v/bass-agents]133;D;0]1337;RemoteHost=jackbishop@macbookair.lan]1337;CurrentDir=/Users/jackbishop/dev/bass-agents[0m[27m[24m[J]133;A[01;32m➜  [36mbass-agents[00m [01;34mgit:([31mfix/session-review-wrapper-hardening[34m) [33m✗[00m ]133;B[K[?1h=[?2004h[?2004l
+
+Script done on Sat Feb 21 17:35:27 2026
