@@ -3,3 +3,6 @@ session-review.md
 
 # Local wrapper run logs
 fixtures/results/session-logs/
+
+# Accidental terminal transcript output from `script`
+typescript
