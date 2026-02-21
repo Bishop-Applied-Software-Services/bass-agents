@@ -1,0 +1,9 @@
+Script started on 2026-02-21 17:35:27
+mkdir: /Users/<user>/.cache/oh-my-zsh: Operation not permitted
+rm: /Users/<user>/.zcompdump-<host>-5.9: Operation not permitted
+/Users/<user>/.oh-my-zsh/oh-my-zsh.sh:126: nice(5) failed: operation not permitted
+\x1b]1337;RemoteHost=<user>@<host>\x07
+\x1b]1337;CurrentDir=/Users/<user>/dev/bass-agents\x07
+zsh: locking failed for /Users/<user>/.zsh_history: operation not permitted: reading anyway
+\x1b[01;32m➜  bass-agents\x1b[00m \x1b[01;34mgit:(fix/session-review-wrapper-hardening)\x1b[00m
+Script done on 2026-02-21 17:35:27
