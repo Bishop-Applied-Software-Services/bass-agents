@@ -1,0 +1,10 @@
+{
+  "messages": [
+    {"role": "system", "content": "You are an assistant."},
+    {"role": "user", "content": "Build todo app with tests"},
+    {"role": "assistant", "content": "I will do that.", "usage": {"input_tokens": 1200, "output_tokens": 450, "total_tokens": 1650}},
+    {"role": "user", "content": "retry, this failed"},
+    {"role": "assistant", "content": "Trying again", "usage": {"prompt_tokens": 1000, "completion_tokens": 400, "total_tokens": 1400}},
+    {"type": "tool_call", "tool_name": "exec_command"}
+  ]
+}

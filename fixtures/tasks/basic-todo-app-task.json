@@ -1,0 +1,40 @@
+{
+  "task_id": "benchmark-basic-todo-app-001",
+  "project": {
+    "name": "basic-todo-app",
+    "runtime": "node",
+    "constraints": [
+      "single-page web app",
+      "no authentication",
+      "local persistence only",
+      "no paid services"
+    ]
+  },
+  "goal": "Build a minimal single-page todo web app with add/toggle/delete flows, local persistence, and tests.",
+  "context": {
+    "user_notes": [
+      "Prioritize clarity and reliability over visual polish.",
+      "Keep implementation simple and easy to review."
+    ],
+    "known_issues": [],
+    "artifacts": {
+      "screenshots": [],
+      "logs": [],
+      "test_results": []
+    }
+  },
+  "definition_of_done": [
+    "User can add a habit with non-empty name.",
+    "User can mark a habit complete/incomplete.",
+    "User can delete a habit.",
+    "Habits persist across refresh using local storage.",
+    "UI shows total habits and completed habits.",
+    "At least 4 automated tests exist for core behavior.",
+    "Project includes a README section with run and test commands."
+  ],
+  "limits": {
+    "timebox_minutes": 60,
+    "max_iterations": 4,
+    "max_code_diff_lines": 300
+  }
+}

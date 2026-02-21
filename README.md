@@ -83,6 +83,43 @@ The `field-notes/` directory captures deployment learnings — what worked, what
 - One file per session or learning (e.g. `2026-02-15-initial-pipeline-run.md`)
 - Use [`field-notes/TEMPLATE.md`](field-notes/TEMPLATE.md) as a starting point for each entry
 
+## Session Review (MVP)
+
+`bass-agents` is adding a cross-tool session review capability to analyze token usage drivers and recommend efficiency improvements.
+
+- MVP definition: [`SESSION-REVIEW-MVP.md`](SESSION-REVIEW-MVP.md)
+- Report contract: [`schemas/session-review-report.schema.json`](schemas/session-review-report.schema.json)
+- Analyzer script: `scripts/review-session.py`
+- Wrapper script: `scripts/run-with-bass-agents.sh`
+
+Example:
+
+```bash
+./scripts/review-session.py --path ./path/to/session.json --source codex --format markdown
+./scripts/review-session.py --path ./path/to/sessions/ --source auto --format json --out ./session-review.json
+./scripts/review-session.py --path ./path/to/session.json --source codex --max-tokens 20000 --max-cost-usd 5 --timebox-minutes 60 --elapsed-minutes 52
+```
+
+Wrapper flow (launch tool, then auto-review on exit):
+
+```bash
+./scripts/run-with-bass-agents.sh --tool codex --format markdown --report-out ./session-review.md -- --model gpt-5
+./scripts/run-with-bass-agents.sh --tool claude --session-path ./path/to/session.json --max-tokens 20000 --timebox-minutes 60 -- --model sonnet
+```
+
+Notes:
+
+- If `--session-path` is omitted, wrapper auto-discovers the newest `.json/.jsonl` artifact for that tool.
+- Override search roots with `BASS_AGENTS_SESSION_DIRS` (colon-separated paths).
+
+## Benchmarks
+
+To measure whether `bass-agents` improves outcomes versus baseline tool usage:
+
+- Basic benchmark spec: [`benchmarks/basic-todo-app/README.md`](benchmarks/basic-todo-app/README.md)
+- Scoring rubric: [`benchmarks/basic-todo-app/scoring-rubric.md`](benchmarks/basic-todo-app/scoring-rubric.md)
+- Fixed task fixture: [`fixtures/tasks/basic-todo-app-task.json`](fixtures/tasks/basic-todo-app-task.json)
+
 ## Creating a New Agent
 
 1. Copy an existing `.agent` file as a template
