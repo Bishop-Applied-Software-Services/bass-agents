@@ -109,7 +109,8 @@ Wrapper flow (launch tool, then auto-review on exit):
 
 Notes:
 
-- If `--session-path` is omitted, wrapper auto-discovers the newest `.json/.jsonl` artifact for that tool.
+- If `--session-path` is omitted, wrapper auto-discovers the newest fresh `.json/.jsonl` artifact for that tool.
+- If no fresh artifact exists, wrapper skips auto-review unless `--allow-stale-artifact` is passed.
 - Override search roots with `BASS_AGENTS_SESSION_DIRS` (colon-separated paths).
 
 ## Benchmarks

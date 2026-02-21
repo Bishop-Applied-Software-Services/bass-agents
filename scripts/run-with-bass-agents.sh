@@ -21,12 +21,13 @@ Optional:
   --max-cost-usd N             Budget: max cost.
   --timebox-minutes N          Budget: timebox in minutes.
   --log-dir DIR                Where wrapper run logs are stored.
+  --allow-stale-artifact       Allow fallback to older artifacts when no fresh artifact exists.
 
 Examples:
   $0 --tool codex -- --model gpt-5
   $0 --tool claude --session-path ./session.json --format markdown --report-out ./review.md --
 USAGE
-  exit 1
+  exit 0
 }
 
 tool=""
@@ -37,7 +38,11 @@ report_out=""
 max_tokens=""
 max_cost_usd=""
 timebox_minutes=""
-log_dir="fixtures/results/session-logs"
+allow_stale_artifact="0"
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
+log_dir="$repo_root/fixtures/results/session-logs"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +55,7 @@ while [[ $# -gt 0 ]]; do
     --max-cost-usd) max_cost_usd="$2"; shift 2 ;;
     --timebox-minutes) timebox_minutes="$2"; shift 2 ;;
     --log-dir) log_dir="$2"; shift 2 ;;
+    --allow-stale-artifact) allow_stale_artifact="1"; shift ;;
     --) shift; break ;;
     -h|--help) usage ;;
     *) echo "Unknown arg: $1" >&2; usage ;;
@@ -77,10 +83,22 @@ run_log="$log_dir/${timestamp}-${tool}.log"
 
 start_epoch="$(date +%s)"
 
+file_mtime_epoch() {
+  local f="$1"
+  local mtime=""
+  mtime="$(stat -f %m "$f" 2>/dev/null || true)"
+  if [[ -z "$mtime" ]]; then
+    mtime="$(stat -c %Y "$f" 2>/dev/null || true)"
+  fi
+  if [[ -n "$mtime" ]]; then
+    printf "%s" "$mtime"
+  fi
+}
+
 discover_session_path() {
   local tool_name="$1"
   local start_ts="$2"
-  local allow_fallback="${3:-1}"
+  local allow_fallback="${3:-0}"
   local dirs_csv="${BASS_AGENTS_SESSION_DIRS:-}"
   local dirs=()
   local best_path=""
@@ -102,9 +120,8 @@ discover_session_path() {
     [[ -d "$d" ]] || continue
     while IFS= read -r f; do
       [[ -f "$f" ]] || continue
-      # macOS/BSD stat format
       local mtime
-      mtime="$(stat -f %m "$f" 2>/dev/null || true)"
+      mtime="$(file_mtime_epoch "$f")"
       [[ -n "$mtime" ]] || continue
       # Prefer artifacts written during/after this run.
       if (( mtime < start_ts - 10 )); then
@@ -131,7 +148,7 @@ discover_session_path() {
 }
 
 # Expose canonical instructions path for future tool integrations.
-export BASS_AGENTS_INSTRUCTIONS_PATH="$(pwd)/CLAUDE.md"
+export BASS_AGENTS_INSTRUCTIONS_PATH="$repo_root/CLAUDE.md"
 
 echo "[bass-agents] launching: $tool $*"
 echo "[bass-agents] run log: $run_log"
@@ -139,7 +156,12 @@ echo "[bass-agents] run log: $run_log"
 tool_exit=0
 if [[ -t 0 && -t 1 ]]; then
   if command -v script >/dev/null 2>&1; then
-    script -q "$run_log" "$tool" "$@" || tool_exit=$?
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      script -q "$run_log" "$tool" "$@" || tool_exit=$?
+    else
+      cmd_quoted="$(printf '%q ' "$tool" "$@")"
+      script -q -e -c "$cmd_quoted" "$run_log" || tool_exit=$?
+    fi
   else
     "$tool" "$@" || tool_exit=$?
   fi
@@ -156,7 +178,7 @@ echo "[bass-agents] tool exit code: $tool_exit"
 echo "[bass-agents] elapsed minutes: $elapsed_minutes"
 
 if [[ -z "$session_path" ]]; then
-  allow_fallback="1"
+  allow_fallback="$allow_stale_artifact"
   if [[ "$tool_exit" -ne 0 ]]; then
     allow_fallback="0"
   fi
@@ -166,12 +188,17 @@ if [[ -z "$session_path" ]]; then
     echo "[bass-agents] auto-discovered session artifact: $session_path"
   else
     echo "[bass-agents] no --session-path and no auto-discovered artifact; skipping auto review"
+    echo "[bass-agents] tip: pass --allow-stale-artifact if you intentionally want to analyze an older artifact"
     echo "[bass-agents] tip: set BASS_AGENTS_SESSION_DIRS for custom search roots"
     exit "$tool_exit"
   fi
 fi
 
-review_cmd=("$(pwd)/scripts/review-session.py" --path "$session_path" --source "$source" --format "$format" --elapsed-minutes "$elapsed_minutes")
+effective_source="$source"
+if [[ "$effective_source" == "auto" ]]; then
+  effective_source="$tool"
+fi
+review_cmd=("$repo_root/scripts/review-session.py" --path "$session_path" --source "$effective_source" --format "$format" --elapsed-minutes "$elapsed_minutes")
 
 if [[ -n "$report_out" ]]; then
   review_cmd+=(--out "$report_out")
