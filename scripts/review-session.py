@@ -119,6 +119,81 @@ def normalize_text(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
+def extract_codex_token_count_usage(obj: Any) -> Dict[str, float] | None:
+    if not isinstance(obj, dict):
+        return None
+    if obj.get("type") != "event_msg":
+        return None
+    payload = obj.get("payload")
+    if not isinstance(payload, dict) or payload.get("type") != "token_count":
+        return None
+    info = payload.get("info")
+    if not isinstance(info, dict):
+        return None
+
+    usage = info.get("last_token_usage")
+    if not isinstance(usage, dict):
+        return None
+
+    out: Dict[str, float] = {}
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            out[key] = float(value)
+    if not out:
+        return None
+    return out
+
+
+def infer_source(files: List[str], objects: List[Any]) -> str:
+    hints: set[str] = set()
+
+    for f in files:
+        lower = f.lower()
+        if "/.codex/" in lower or "/codex/" in lower:
+            hints.add("codex")
+        if "/.claude/" in lower or "/claude/" in lower:
+            hints.add("claude")
+
+    for n in walk(objects):
+        if not isinstance(n, dict):
+            continue
+
+        originator = n.get("originator")
+        if isinstance(originator, str) and "codex" in originator.lower():
+            hints.add("codex")
+
+        model_provider = n.get("model_provider")
+        if isinstance(model_provider, str):
+            provider = model_provider.lower()
+            if provider == "openai":
+                hints.add("codex")
+            elif provider == "anthropic":
+                hints.add("claude")
+
+        source = n.get("source")
+        if isinstance(source, str):
+            source_lower = source.lower()
+            if source_lower in {"codex", "claude"}:
+                hints.add(source_lower)
+
+        message = n.get("message")
+        if isinstance(message, dict):
+            model = message.get("model")
+            if isinstance(model, str):
+                model_lower = model.lower()
+                if "claude" in model_lower:
+                    hints.add("claude")
+                elif model_lower.startswith("gpt") or model_lower.startswith("o"):
+                    hints.add("codex")
+
+    if len(hints) > 1:
+        return "mixed"
+    if len(hints) == 1:
+        return next(iter(hints))
+    return "unknown"
+
+
 def collect_metrics(objects: List[Any]) -> Dict[str, Any]:
     input_tokens = 0.0
     output_tokens = 0.0
@@ -131,8 +206,25 @@ def collect_metrics(objects: List[Any]) -> Dict[str, Any]:
     retry_loops = 0
 
     context_texts: List[str] = []
+    last_token_snapshot: Tuple[float, float, float] | None = None
 
     for obj in objects:
+        token_usage = extract_codex_token_count_usage(obj)
+        if token_usage is not None:
+            snapshot = (
+                float(token_usage.get("input_tokens", 0.0)),
+                float(token_usage.get("output_tokens", 0.0)),
+                float(token_usage.get("total_tokens", 0.0)),
+            )
+            # Codex may emit duplicate token_count snapshots; count each unique
+            # consecutive snapshot once.
+            if snapshot != last_token_snapshot:
+                input_tokens += snapshot[0]
+                output_tokens += snapshot[1]
+                total_tokens += snapshot[2]
+                last_token_snapshot = snapshot
+            continue
+
         for n in walk(obj):
             if not isinstance(n, dict):
                 continue
@@ -539,7 +631,7 @@ def main() -> int:
 
     source = args.source
     if source == "auto":
-        source = "mixed" if parsed > 1 else "codex"
+        source = infer_source(files, objects)
 
     summary = collect_metrics(objects)
     budget = build_budget(summary, args)
