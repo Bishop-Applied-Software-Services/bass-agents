@@ -1,6 +1,9 @@
 # Local generated reports
 session-review.md
 
+# Local agtrace state/config
+.agtrace/
+
 # Local wrapper run logs
 fixtures/results/session-logs/
 
@@ -10,3 +13,6 @@ typescript
 # Python bytecode/cache artifacts
 __pycache__/
 *.pyc
+
+# Local editor settings
+.vscode/
