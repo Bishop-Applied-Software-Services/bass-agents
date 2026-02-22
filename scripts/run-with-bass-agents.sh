@@ -16,6 +16,9 @@ Optional:
   --session-path PATH          Optional path hint for review-session.py.
   --session-id ID              Explicit provider session id for review-session.py.
   --source auto|codex|claude   Source passed to review-session.py (default: auto).
+  --run-type smoke|workflow|real
+                               Run category for thresholding/baselines (default: real).
+  --smoke-test                 Claude-only low-cost mode for quick command-path checks.
   --format json|markdown       Review output format (default: markdown).
   --project NAME               Project slug for default report path.
   --report-out PATH            Write review output to this path.
@@ -27,6 +30,7 @@ Optional:
 
 Examples:
   $0 --tool codex -- --model gpt-5
+  $0 --tool claude --smoke-test -- exec "Reply with exactly: ok"
   $0 --tool claude --session-path ./session.json --format markdown --report-out ./review.md --
 USAGE
   exit 0
@@ -36,6 +40,9 @@ tool=""
 session_path=""
 session_id=""
 source="auto"
+run_type="real"
+run_type_explicit="0"
+smoke_test="0"
 format="markdown"
 project=""
 report_out=""
@@ -54,6 +61,8 @@ while [[ $# -gt 0 ]]; do
     --session-path) session_path="$2"; shift 2 ;;
     --session-id) session_id="$2"; shift 2 ;;
     --source) source="$2"; shift 2 ;;
+    --run-type) run_type="$2"; run_type_explicit="1"; shift 2 ;;
+    --smoke-test) smoke_test="1"; shift ;;
     --format) format="$2"; shift 2 ;;
     --project) project="$2"; shift 2 ;;
     --report-out) report_out="$2"; shift 2 ;;
@@ -75,6 +84,11 @@ fi
 
 if [[ "$tool" != "codex" && "$tool" != "claude" ]]; then
   echo "Error: --tool must be codex or claude" >&2
+  exit 1
+fi
+
+if [[ "$run_type" != "smoke" && "$run_type" != "workflow" && "$run_type" != "real" ]]; then
+  echo "Error: --run-type must be smoke, workflow, or real" >&2
   exit 1
 fi
 
@@ -182,7 +196,59 @@ discover_session_path() {
 # Expose canonical instructions path for future tool integrations.
 export BASS_AGENTS_INSTRUCTIONS_PATH="$repo_root/CLAUDE.md"
 
-echo "[bass-agents] launching: $tool $*"
+tool_args=("$@")
+if [[ "$tool" == "claude" && "${#tool_args[@]}" -gt 0 && "${tool_args[0]}" == "exec" ]]; then
+  # Codex supports "exec"; map it to Claude's one-shot print mode.
+  tool_args=("${tool_args[@]:1}")
+  has_print_flag=0
+  for arg in "${tool_args[@]}"; do
+    if [[ "$arg" == "-p" || "$arg" == "--print" ]]; then
+      has_print_flag=1
+      break
+    fi
+  done
+  if [[ "$has_print_flag" -eq 0 ]]; then
+    tool_args=(--print "${tool_args[@]}")
+  fi
+  echo "[bass-agents] normalized claude args: exec -> --print"
+fi
+
+if [[ "$tool" == "claude" && "$smoke_test" == "1" ]]; then
+  if [[ "$run_type_explicit" == "0" ]]; then
+    run_type="smoke"
+  fi
+  has_session_persistence_flag=0
+  has_disable_slash=0
+  has_model=0
+  for arg in "${tool_args[@]}"; do
+    if [[ "$arg" == "--no-session-persistence" ]]; then
+      has_session_persistence_flag=1
+    fi
+    if [[ "$arg" == "--disable-slash-commands" ]]; then
+      has_disable_slash=1
+    fi
+    if [[ "$arg" == "--model" || "$arg" == --model=* ]]; then
+      has_model=1
+    fi
+  done
+  if [[ "$has_session_persistence_flag" -eq 0 ]]; then
+    tool_args=(--no-session-persistence "${tool_args[@]}")
+  fi
+  if [[ "$has_disable_slash" -eq 0 ]]; then
+    tool_args=(--disable-slash-commands "${tool_args[@]}")
+  fi
+  if [[ "$has_model" -eq 0 ]]; then
+    tool_args=(--model sonnet "${tool_args[@]}")
+  fi
+  echo "[bass-agents] smoke-test mode enabled for claude"
+fi
+
+launch_cmd="$tool"
+if [[ "${#tool_args[@]}" -gt 0 ]]; then
+  launch_cmd+=" $(printf '%q ' "${tool_args[@]}")"
+  launch_cmd="${launch_cmd% }"
+fi
+echo "[bass-agents] launching: $launch_cmd"
 echo "[bass-agents] run log: $run_log"
 echo "[bass-agents] session reference id: $session_ref_id"
 
@@ -190,17 +256,17 @@ tool_exit=0
 if [[ -t 0 && -t 1 ]]; then
   if command -v script >/dev/null 2>&1; then
     if [[ "$(uname -s)" == "Darwin" ]]; then
-      script -q "$run_log" "$tool" "$@" || tool_exit=$?
+      script -q "$run_log" "$tool" "${tool_args[@]}" || tool_exit=$?
     else
-      cmd_quoted="$(printf '%q ' "$tool" "$@")"
+      cmd_quoted="$(printf '%q ' "$tool" "${tool_args[@]}")"
       script -q -e -c "$cmd_quoted" "$run_log" || tool_exit=$?
     fi
   else
-    "$tool" "$@" || tool_exit=$?
+    "$tool" "${tool_args[@]}" || tool_exit=$?
   fi
 else
   {
-    "$tool" "$@"
+    "$tool" "${tool_args[@]}"
   } 2>&1 | tee "$run_log" || tool_exit=$?
 fi
 
@@ -209,6 +275,11 @@ elapsed_minutes=$(awk -v s="$start_epoch" -v e="$end_epoch" 'BEGIN { printf "%.2
 
 echo "[bass-agents] tool exit code: $tool_exit"
 echo "[bass-agents] elapsed minutes: $elapsed_minutes"
+
+if [[ "$tool" == "claude" && "$smoke_test" == "1" && -z "$session_id" ]]; then
+  echo "[bass-agents] smoke-test mode: skipping session review (pass --session-id to force review)"
+  exit "$tool_exit"
+fi
 
 if [[ -z "$session_path" ]]; then
   # review-session.py resolves session via --session-id; this is only a compatibility hint.
@@ -219,9 +290,9 @@ effective_source="$source"
 if [[ "$effective_source" == "auto" ]]; then
   effective_source="$tool"
 fi
+inferred_project="${project:-${BASS_AGENTS_PROJECT:-$(basename "$PWD")}}"
+project_slug="$(normalize_project_slug "$inferred_project")"
 if [[ -z "$report_out" ]]; then
-  inferred_project="${project:-${BASS_AGENTS_PROJECT:-$(basename "$PWD")}}"
-  project_slug="$(normalize_project_slug "$inferred_project")"
   report_date="$(date +%Y-%m-%d)"
   report_time="${timestamp#*-}"
   session_suffix=""
@@ -239,9 +310,11 @@ if [[ -z "$report_out" ]]; then
 fi
 
 mkdir -p "$(dirname "$report_out")"
+trend_file="$repo_root/session-reviews/$project_slug/trend.csv"
 echo "[bass-agents] review report: $report_out"
+echo "[bass-agents] run type: $run_type"
 
-review_cmd=("$repo_root/scripts/review-session.py" --path "$session_path" --source "$effective_source" --format "$format" --elapsed-minutes "$elapsed_minutes" --out "$report_out")
+review_cmd=("$repo_root/scripts/review-session.py" --path "$session_path" --source "$effective_source" --project "$project_slug" --run-type "$run_type" --trend-file "$trend_file" --format "$format" --elapsed-minutes "$elapsed_minutes" --out "$report_out")
 review_cmd+=(--session-reference-id "$session_ref_id")
 if [[ -n "$session_id" ]]; then
   review_cmd+=(--session-id "$session_id")

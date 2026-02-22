@@ -1,0 +1,20 @@
+name: Session Review Verdict Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      report_path:
+        description: Path to session review JSON report
+        required: true
+        type: string
+
+jobs:
+  verdict-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run verdict gate
+        run: |
+          python3 scripts/ci-verdict-gate.py --report "${{ inputs.report_path }}"
