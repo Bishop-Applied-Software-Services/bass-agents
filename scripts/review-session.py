@@ -514,7 +514,8 @@ def build_drivers(summary: Dict[str, Any]) -> List[Dict[str, Any]]:
     total = int(summary["total_tokens"])
     uncached = int(summary.get("uncached_tokens", total))
     cache_read = int(summary.get("cache_read_tokens", 0))
-    avg = float(summary.get("avg_tokens_per_message", 0.0))
+    messages = max(1, int(summary.get("messages", 0) or 0))
+    uncached_avg = float(uncached) / float(messages)
     tools = int(summary.get("tool_calls", 0))
     retries = int(summary.get("retry_loops", 0))
     repeated = float(summary.get("repeated_context_ratio", 0.0))
@@ -532,12 +533,12 @@ def build_drivers(summary: Dict[str, Any]) -> List[Dict[str, Any]]:
             f"Cache-read tokens were {cache_read}; they inflate totals but are weighted lower for optimization scoring.",
         ))
 
-    if avg > 400:
-        impact = int((avg - 400) * max(1, summary.get("messages", 0) * 0.2))
+    if uncached_avg > 400:
+        impact = int((uncached_avg - 400) * max(1, summary.get("messages", 0) * 0.2))
         drivers.append((
             "High tokens per message",
             max(0, impact),
-            f"Average tokens/message was {avg:.1f}; longer turns increase cumulative token spend.",
+            f"Average uncached tokens/message was {uncached_avg:.1f}; longer turns increase controllable token spend.",
         ))
 
     if retries > 0:
