@@ -87,7 +87,7 @@ The `field-notes/` directory captures deployment learnings — what worked, what
 
 `bass-agents` uses existing CLI tooling to analyze token usage drivers and recommend efficiency improvements.
 
-- MVP definition: [`docs/prds/2026-02-21-SESSION-REVIEW-MVP copy.md`](docs/prds/2026-02-21-SESSION-REVIEW-MVP%20copy.md)
+- MVP definition: [`docs/prds/2026-02-21-SESSION-REVIEW-MVP.md`](docs/prds/2026-02-21-SESSION-REVIEW-MVP.md)
 - Report contract: [`schemas/session-review-report.schema.json`](schemas/session-review-report.schema.json)
 - Analyzer/normalizer script: `scripts/review-session.py`
 - Wrapper script: `scripts/run-with-bass-agents.sh`
