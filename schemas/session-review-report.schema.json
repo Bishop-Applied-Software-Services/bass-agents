@@ -6,7 +6,9 @@
   "type": "object",
   "required": [
     "report_id",
+    "session_reference_id",
     "generated_at",
+    "model_used",
     "source",
     "sessions_analyzed",
     "summary",
@@ -19,9 +21,17 @@
       "type": "string",
       "minLength": 1
     },
+    "session_reference_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "generated_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "model_used": {
+      "type": "string",
+      "minLength": 1
     },
     "source": {
       "type": "string",

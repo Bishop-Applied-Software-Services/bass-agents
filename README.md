@@ -85,33 +85,54 @@ The `field-notes/` directory captures deployment learnings — what worked, what
 
 ## Session Review (MVP)
 
-`bass-agents` is adding a cross-tool session review capability to analyze token usage drivers and recommend efficiency improvements.
+`bass-agents` uses existing CLI tooling to analyze token usage drivers and recommend efficiency improvements.
 
-- MVP definition: [`SESSION-REVIEW-MVP.md`](SESSION-REVIEW-MVP.md)
+- MVP definition: [`docs/prds/2026-02-21-SESSION-REVIEW-MVP copy.md`](docs/prds/2026-02-21-SESSION-REVIEW-MVP%20copy.md)
 - Report contract: [`schemas/session-review-report.schema.json`](schemas/session-review-report.schema.json)
-- Analyzer script: `scripts/review-session.py`
+- Analyzer/normalizer script: `scripts/review-session.py`
 - Wrapper script: `scripts/run-with-bass-agents.sh`
+- Upstream tools: `agtrace` + `ccusage`
+
+Install dependencies:
+
+```bash
+npm install -g @lanegrid/agtrace ccusage
+```
 
 Example:
 
 ```bash
-./scripts/review-session.py --path ./path/to/session.json --source codex --format markdown
-./scripts/review-session.py --path ./path/to/sessions/ --source auto --format json --out ./session-review.json
-./scripts/review-session.py --path ./path/to/session.json --source codex --max-tokens 20000 --max-cost-usd 5 --timebox-minutes 60 --elapsed-minutes 52
+./scripts/review-session.py --path . --source codex --format markdown
+./scripts/review-session.py --path . --source claude --format json --out ./session-review.json
+./scripts/review-session.py --path . --source codex --session-id <agtrace-session-id> --format markdown
+./scripts/review-session.py --path . --source claude --max-tokens 20000 --max-cost-usd 5 --timebox-minutes 60 --elapsed-minutes 52
 ```
 
 Wrapper flow (launch tool, then auto-review on exit):
 
 ```bash
-./scripts/run-with-bass-agents.sh --tool codex --format markdown --report-out ./session-review.md -- --model gpt-5
-./scripts/run-with-bass-agents.sh --tool claude --session-path ./path/to/session.json --max-tokens 20000 --timebox-minutes 60 -- --model sonnet
+./scripts/run-with-bass-agents.sh --tool codex --project bass.ai --session-id <agtrace-session-id> --format markdown -- --model gpt-5
+./scripts/run-with-bass-agents.sh --tool claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60 -- --model sonnet
+```
+
+Checkpoint flow (generate JSON report + append trend row):
+
+```bash
+./scripts/session-review-checkpoint.sh --source codex --project bass.ai --session-id <agtrace-session-id>
+./scripts/session-review-checkpoint.sh --source claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60
 ```
 
 Notes:
 
-- If `--session-path` is omitted, wrapper auto-discovers the newest fresh `.json/.jsonl` artifact for that tool.
-- If no fresh artifact exists, wrapper skips auto-review unless `--allow-stale-artifact` is passed.
+- If `--session-path` is omitted, wrapper uses an internal path hint and relies on `review-session.py` tool-integrated session resolution.
+- If `--session-id` is provided, wrapper passes it through so analysis targets that exact provider session.
+- If `--session-id` is omitted, wrapper/checkpoint generates a `session reference id` and logs it for downstream filenames/tracking.
+- Reports now include `session_reference_id`, and checkpoint trends persist it in `trend.csv`.
 - Override search roots with `BASS_AGENTS_SESSION_DIRS` (colon-separated paths).
+- If `--report-out` is omitted, wrapper writes to `session-reviews/<project>/YYYY-MM-DD-<tool>-session-review-HHMMSS.{md|json}`.
+- If `--session-id` is provided, default report filename appends the id: `...-session-review-HHMMSS-<session-id>.{md|json}`.
+- Project name resolution order for default output: `--project`, then `BASS_AGENTS_PROJECT`, then current directory name.
+- Store generated review reports under `session-reviews/<project>/` (for example: `session-reviews/bass.ai/2026-02-22-claude-session-review-112115.md`).
 
 ## Benchmarks
 
