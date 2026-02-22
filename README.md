@@ -118,6 +118,7 @@ Wrapper flow (launch tool, then auto-review on exit):
 ```bash
 bass-agents run --tool codex --project bass.ai --session-id <agtrace-session-id> --format markdown -- --model gpt-5
 bass-agents run --tool claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60 -- --model sonnet
+bass-agents run --tool claude --smoke-test --run-type smoke --project bass.ai --format markdown -- exec "Reply with exactly: ok"
 ```
 
 Checkpoint flow (generate JSON report + append trend row):
@@ -125,6 +126,8 @@ Checkpoint flow (generate JSON report + append trend row):
 ```bash
 bass-agents checkpoint --source codex --project bass.ai --session-id <agtrace-session-id>
 bass-agents checkpoint --source claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60
+bass-agents checkpoint --source codex --run-type workflow --project bass.ai --session-id <agtrace-session-id>
+bass-agents checkpoint --source codex --run-type workflow --project bass.ai --session-id <agtrace-session-id> --enforce-verdict
 ```
 
 Notes:
@@ -132,13 +135,26 @@ Notes:
 - If `--session-path` is omitted, wrapper uses an internal path hint and relies on `review-session.py` tool-integrated session resolution.
 - If `--session-id` is provided, wrapper passes it through so analysis targets that exact provider session.
 - If `--session-id` is omitted, wrapper/checkpoint generates a `session reference id` and logs it for downstream filenames/tracking.
-- Reports now include `session_reference_id`, and checkpoint trends persist it in `trend.csv`.
+- Reports now include `session_reference_id`, `run_type`, and evaluation verdict (`pass|warn|fail`).
+- Wrapper and checkpoint both persist trend rows in `session-reviews/<project>/trend.csv` with `run_type`, `uncached_tokens`, and verdict.
+- Reports include baseline deltas vs the last 5 similar runs (`project + source + run_type`).
+- CI gate policy: `scripts/ci-verdict-gate.py` fails on `workflow`/`real` reports with verdict `fail`; `smoke` is non-blocking.
 - Override search roots with `BASS_AGENTS_SESSION_DIRS` (colon-separated paths).
 - If `--report-out` is omitted, wrapper writes to `session-reviews/<project>/YYYY-MM-DD-<tool>-session-review-HHMMSS.{md|json}`.
 - If `--session-id` is provided, default report filename appends the id: `...-session-review-HHMMSS-<session-id>.{md|json}`.
 - Project name resolution order for default output: `--project`, then `BASS_AGENTS_PROJECT`, then current directory name.
 - Store generated review reports under `session-reviews/<project>/` (for example: `session-reviews/bass.ai/2026-02-22-claude-session-review-112115.md`).
 - Keep `.agtrace/` local-only (gitignored) so provider paths remain machine-specific and portable across contributors.
+
+CI helper examples:
+
+```bash
+# Gate an existing JSON report
+python3 scripts/ci-verdict-gate.py --report ./session-reviews/bass.ai/latest.json
+
+# Generate + gate in one step
+scripts/session-review-checkpoint.sh --source codex --run-type workflow --project bass.ai --session-id <id> --enforce-verdict
+```
 
 ## Benchmarks
 
