@@ -25,7 +25,10 @@ bass-agents/
     TEMPLATE.md              # Recommended structure for entries
     <project-name>/          # One folder per project
       YYYY-MM-DD-<slug>.md   # One file per session/learning
-  install.sh                 # Symlink agents into ~/.agents/
+  bin/
+    bass-agents              # Main CLI entrypoint
+    bassai                   # Short alias for bass-agents
+  install.sh                 # Legacy installer (calls "bass-agents install")
   bass-agents-spec-v0.md     # Full specification
 ```
 
@@ -35,10 +38,12 @@ bass-agents/
 # Clone the repo
 git clone <repo-url> && cd bass-agents
 
-# Install agent files (symlinks into ~/.agents/)
-./install.sh
+# First-time setup (links CLI + agents, installs agtrace/ccusage, initializes .agtrace)
+./bin/bass-agents init
 
 # Verify
+which bass-agents
+which bassai
 ls -la ~/.agents/
 ```
 
@@ -93,33 +98,33 @@ The `field-notes/` directory captures deployment learnings — what worked, what
 - Wrapper script: `scripts/run-with-bass-agents.sh`
 - Upstream tools: `agtrace` + `ccusage`
 
-Install dependencies:
+First-time setup:
 
 ```bash
-npm install -g @lanegrid/agtrace ccusage
+./bin/bass-agents init
 ```
 
 Example:
 
 ```bash
-./scripts/review-session.py --path . --source codex --format markdown
-./scripts/review-session.py --path . --source claude --format json --out ./session-review.json
-./scripts/review-session.py --path . --source codex --session-id <agtrace-session-id> --format markdown
-./scripts/review-session.py --path . --source claude --max-tokens 20000 --max-cost-usd 5 --timebox-minutes 60 --elapsed-minutes 52
+bass-agents review --path . --source codex --format markdown
+bass-agents review --path . --source claude --format json --out ./session-review.json
+bass-agents review --path . --source codex --session-id <agtrace-session-id> --format markdown
+bass-agents review --path . --source claude --max-tokens 20000 --max-cost-usd 5 --timebox-minutes 60 --elapsed-minutes 52
 ```
 
 Wrapper flow (launch tool, then auto-review on exit):
 
 ```bash
-./scripts/run-with-bass-agents.sh --tool codex --project bass.ai --session-id <agtrace-session-id> --format markdown -- --model gpt-5
-./scripts/run-with-bass-agents.sh --tool claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60 -- --model sonnet
+bass-agents run --tool codex --project bass.ai --session-id <agtrace-session-id> --format markdown -- --model gpt-5
+bass-agents run --tool claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60 -- --model sonnet
 ```
 
 Checkpoint flow (generate JSON report + append trend row):
 
 ```bash
-./scripts/session-review-checkpoint.sh --source codex --project bass.ai --session-id <agtrace-session-id>
-./scripts/session-review-checkpoint.sh --source claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60
+bass-agents checkpoint --source codex --project bass.ai --session-id <agtrace-session-id>
+bass-agents checkpoint --source claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60
 ```
 
 Notes:
@@ -133,6 +138,7 @@ Notes:
 - If `--session-id` is provided, default report filename appends the id: `...-session-review-HHMMSS-<session-id>.{md|json}`.
 - Project name resolution order for default output: `--project`, then `BASS_AGENTS_PROJECT`, then current directory name.
 - Store generated review reports under `session-reviews/<project>/` (for example: `session-reviews/bass.ai/2026-02-22-claude-session-review-112115.md`).
+- Keep `.agtrace/` local-only (gitignored) so provider paths remain machine-specific and portable across contributors.
 
 ## Benchmarks
 
@@ -147,6 +153,6 @@ To measure whether `bass-agents` improves outcomes versus baseline tool usage:
 1. Copy an existing `.agent` file as a template
 2. Fill in all sections (Core Definition through Metadata)
 3. Ensure the agent accepts `AgentTask` and produces `AgentResult`
-4. Add it to `agents/` and re-run `./install.sh`
+4. Add it to `agents/` and re-run `bass-agents install`
 
 See the [full spec](bass-agents-spec-v0.md) for detailed requirements.
