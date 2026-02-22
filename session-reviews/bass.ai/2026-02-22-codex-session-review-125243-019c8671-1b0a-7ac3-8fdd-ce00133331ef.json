@@ -1,0 +1,130 @@
+{
+  "report_id": "session-review-2a404f60",
+  "session_reference_id": "019c8671-1b0a-7ac3-8fdd-ce00133331ef",
+  "generated_at": "2026-02-22T17:52:43.995883+00:00",
+  "source": "codex",
+  "sessions_analyzed": 1,
+  "summary": {
+    "input_tokens": 2146,
+    "output_tokens": 37,
+    "total_tokens": 8711,
+    "messages": 2,
+    "avg_tokens_per_message": 4355.5,
+    "tool_calls": 0,
+    "retry_loops": 0,
+    "repeated_context_ratio": 0.0
+  },
+  "scores": {
+    "efficiency": 62.58,
+    "reliability": 84.0,
+    "quality_estimate": 100.0,
+    "composite": 83.7,
+    "confidence": "medium",
+    "score_method": "tool-integrated-v1"
+  },
+  "top_token_drivers": [
+    {
+      "rank": 1,
+      "driver": "Session size",
+      "estimated_token_impact": 8711,
+      "details": "Total tokens were 8711, which is the primary overall cost driver."
+    },
+    {
+      "rank": 2,
+      "driver": "High tokens per message",
+      "estimated_token_impact": 3955,
+      "details": "Average tokens/message was 4355.5; longer turns increase cumulative token spend."
+    }
+  ],
+  "recommendations": [
+    {
+      "id": "R-001",
+      "action": "Use a tighter initial task contract and avoid re-sending unchanged full context every turn.",
+      "expected_impact": "high",
+      "rationale": "Reduces repeated prompt overhead and prevents context bloat.",
+      "doc_refs": [
+        "https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/claude-4-best-practices",
+        "https://platform.openai.com/docs/guides/prompt-optimizer/"
+      ]
+    },
+    {
+      "id": "R-002",
+      "action": "Keep turn objectives single-purpose and cap response scope per turn.",
+      "expected_impact": "medium",
+      "rationale": "Scoped turns lower average tokens per message and improve control.",
+      "doc_refs": [
+        "https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/claude-4-best-practices"
+      ]
+    },
+    {
+      "id": "R-003",
+      "action": "Use agtrace and ccusage as standard diagnostics before tuning prompts manually.",
+      "expected_impact": "medium",
+      "rationale": "Consistent instrumentation improves attribution and recommendation quality.",
+      "doc_refs": [
+        "https://github.com/lanegrid/agtrace",
+        "https://ccusage.com/guide/json-output"
+      ]
+    }
+  ],
+  "raw_sources": {
+    "agtrace": {
+      "badge": {
+        "level": "success",
+        "label": "Session Analysis"
+      },
+      "content": {
+        "header": {
+          "session_id": "019c8671-1b0a-7ac3-8fdd-ce00133331ef",
+          "stream_id": "main",
+          "provider": "codex",
+          "project_hash": "626977d3d51efb91217a7340ae267957e00cc5e3826a502cc4db9014f3e50606",
+          "project_root": "/Users/jackbishop/dev/bass.ai",
+          "model": "Claude 3.5 Sonnet",
+          "status": "Complete",
+          "duration": "0s",
+          "start_time": "12:41:25",
+          "log_files": [
+            "/Users/jackbishop/.codex/sessions/2026/02/22/rollout-2026-02-22T12-41-25-019c8671-1b0a-7ac3-8fdd-ce00133331ef.jsonl"
+          ]
+        },
+        "context_summary": {
+          "current_tokens": 8711,
+          "max_tokens": 155000
+        },
+        "turns": [
+          {
+            "turn_number": 1,
+            "timestamp": "12:41:25",
+            "prev_tokens": 0,
+            "current_tokens": 8711,
+            "context_usage": {
+              "current_tokens": 8711,
+              "max_tokens": 155000,
+              "percentage": 5.62
+            },
+            "is_heavy_load": false,
+            "user_query": "Reply with exactly: ok",
+            "steps": [
+              {
+                "kind": "Thinking",
+                "duration": null,
+                "preview": ""
+              },
+              {
+                "kind": "Message",
+                "text": "ok"
+              }
+            ],
+            "metrics": {
+              "total_delta": 8711,
+              "input_tokens": 2146,
+              "output_tokens": 37,
+              "cache_read_tokens": 6528
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -57,6 +57,9 @@ MetaAgent must ensure every child agent includes these constraints:
 ## 4. Handoff Contract (Universal)
 All agents MUST accept an `AgentTask` and output an `AgentResult`.
 
+Always-read baseline context lives at `ai-context/README.md`.
+Agents SHOULD read it at run start, but `schemas/agent-task.schema.json` and `schemas/agent-result.schema.json` remain the source of truth for contract validation.
+
 ### 4.1 AgentTask (Input)
 ```json
 {
