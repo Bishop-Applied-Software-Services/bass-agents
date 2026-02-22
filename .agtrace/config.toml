@@ -1,0 +1,11 @@
+[providers.claude_code]
+enabled = true
+log_root = "/Users/jackbishop/.claude/projects"
+
+[providers.codex]
+enabled = true
+log_root = "/Users/jackbishop/.codex/sessions"
+
+[providers.gemini]
+enabled = true
+log_root = "/Users/jackbishop/.gemini/tmp"

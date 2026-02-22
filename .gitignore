@@ -10,3 +10,6 @@ typescript
 # Python bytecode/cache artifacts
 __pycache__/
 *.pyc
+
+# Local editor settings
+.vscode/
