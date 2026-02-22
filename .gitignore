@@ -6,3 +6,7 @@ fixtures/results/session-logs/
 
 # Accidental terminal transcript output from `script`
 typescript
+
+# Python bytecode/cache artifacts
+__pycache__/
+*.pyc
