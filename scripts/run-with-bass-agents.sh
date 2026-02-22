@@ -13,15 +13,17 @@ Required:
   --tool codex|claude          Tool CLI to execute.
 
 Optional:
-  --session-path PATH          JSON/JSONL artifact path to analyze after run.
+  --session-path PATH          Optional path hint for review-session.py.
+  --session-id ID              Explicit provider session id for review-session.py.
   --source auto|codex|claude   Source passed to review-session.py (default: auto).
   --format json|markdown       Review output format (default: markdown).
+  --project NAME               Project slug for default report path.
   --report-out PATH            Write review output to this path.
   --max-tokens N               Budget: max tokens.
   --max-cost-usd N             Budget: max cost.
   --timebox-minutes N          Budget: timebox in minutes.
   --log-dir DIR                Where wrapper run logs are stored.
-  --allow-stale-artifact       Allow fallback to older artifacts when no fresh artifact exists.
+  --allow-stale-artifact       Deprecated (session-id is now required).
 
 Examples:
   $0 --tool codex -- --model gpt-5
@@ -32,8 +34,10 @@ USAGE
 
 tool=""
 session_path=""
+session_id=""
 source="auto"
 format="markdown"
+project=""
 report_out=""
 max_tokens=""
 max_cost_usd=""
@@ -48,8 +52,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --tool) tool="$2"; shift 2 ;;
     --session-path) session_path="$2"; shift 2 ;;
+    --session-id) session_id="$2"; shift 2 ;;
     --source) source="$2"; shift 2 ;;
     --format) format="$2"; shift 2 ;;
+    --project) project="$2"; shift 2 ;;
     --report-out) report_out="$2"; shift 2 ;;
     --max-tokens) max_tokens="$2"; shift 2 ;;
     --max-cost-usd) max_cost_usd="$2"; shift 2 ;;
@@ -77,6 +83,11 @@ if ! command -v "$tool" >/dev/null 2>&1; then
   exit 1
 fi
 
+session_ref_id="$session_id"
+if [[ -z "$session_ref_id" ]]; then
+  session_ref_id="auto-$(date +%Y%m%d-%H%M%S)-$RANDOM"
+fi
+
 mkdir -p "$log_dir"
 timestamp="$(date +%Y%m%d-%H%M%S)"
 run_log="$log_dir/${timestamp}-${tool}.log"
@@ -93,6 +104,27 @@ file_mtime_epoch() {
   if [[ -n "$mtime" ]]; then
     printf "%s" "$mtime"
   fi
+}
+
+normalize_project_slug() {
+  local raw="$1"
+  local out=""
+  out="$(printf "%s" "$raw" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9._-' '-')"
+  out="${out#-}"
+  out="${out%-}"
+  if [[ -z "$out" ]]; then
+    out="unknown-project"
+  fi
+  printf "%s" "$out"
+}
+
+normalize_session_id() {
+  local raw="$1"
+  local out=""
+  out="$(printf "%s" "$raw" | tr -cs 'a-zA-Z0-9._-' '-')"
+  out="${out#-}"
+  out="${out%-}"
+  printf "%s" "$out"
 }
 
 discover_session_path() {
@@ -152,6 +184,7 @@ export BASS_AGENTS_INSTRUCTIONS_PATH="$repo_root/CLAUDE.md"
 
 echo "[bass-agents] launching: $tool $*"
 echo "[bass-agents] run log: $run_log"
+echo "[bass-agents] session reference id: $session_ref_id"
 
 tool_exit=0
 if [[ -t 0 && -t 1 ]]; then
@@ -178,30 +211,40 @@ echo "[bass-agents] tool exit code: $tool_exit"
 echo "[bass-agents] elapsed minutes: $elapsed_minutes"
 
 if [[ -z "$session_path" ]]; then
-  allow_fallback="$allow_stale_artifact"
-  if [[ "$tool_exit" -ne 0 ]]; then
-    allow_fallback="0"
-  fi
-  discovered="$(discover_session_path "$tool" "$start_epoch" "$allow_fallback")"
-  if [[ -n "${discovered:-}" ]]; then
-    session_path="$discovered"
-    echo "[bass-agents] auto-discovered session artifact: $session_path"
-  else
-    echo "[bass-agents] no --session-path and no auto-discovered artifact; skipping auto review"
-    echo "[bass-agents] tip: pass --allow-stale-artifact if you intentionally want to analyze an older artifact"
-    echo "[bass-agents] tip: set BASS_AGENTS_SESSION_DIRS for custom search roots"
-    exit "$tool_exit"
-  fi
+  # review-session.py resolves session via --session-id; this is only a compatibility hint.
+  session_path="$repo_root"
 fi
 
 effective_source="$source"
 if [[ "$effective_source" == "auto" ]]; then
   effective_source="$tool"
 fi
-review_cmd=("$repo_root/scripts/review-session.py" --path "$session_path" --source "$effective_source" --format "$format" --elapsed-minutes "$elapsed_minutes")
+if [[ -z "$report_out" ]]; then
+  inferred_project="${project:-${BASS_AGENTS_PROJECT:-$(basename "$PWD")}}"
+  project_slug="$(normalize_project_slug "$inferred_project")"
+  report_date="$(date +%Y-%m-%d)"
+  report_time="${timestamp#*-}"
+  session_suffix=""
+  if [[ -n "$session_ref_id" ]]; then
+    normalized_session_id="$(normalize_session_id "$session_ref_id")"
+    if [[ -n "$normalized_session_id" ]]; then
+      session_suffix="-$normalized_session_id"
+    fi
+  fi
+  report_ext="md"
+  if [[ "$format" == "json" ]]; then
+    report_ext="json"
+  fi
+  report_out="$repo_root/session-reviews/$project_slug/${report_date}-${tool}-session-review-${report_time}${session_suffix}.${report_ext}"
+fi
 
-if [[ -n "$report_out" ]]; then
-  review_cmd+=(--out "$report_out")
+mkdir -p "$(dirname "$report_out")"
+echo "[bass-agents] review report: $report_out"
+
+review_cmd=("$repo_root/scripts/review-session.py" --path "$session_path" --source "$effective_source" --format "$format" --elapsed-minutes "$elapsed_minutes" --out "$report_out")
+review_cmd+=(--session-reference-id "$session_ref_id")
+if [[ -n "$session_id" ]]; then
+  review_cmd+=(--session-id "$session_id")
 fi
 if [[ -n "$max_tokens" ]]; then
   review_cmd+=(--max-tokens "$max_tokens")
