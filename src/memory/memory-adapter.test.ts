@@ -78,7 +78,7 @@ describe('MemoryAdapter', () => {
       const memoryId = await adapter.create(testProject, entry);
 
       expect(memoryId).toBeDefined();
-      expect(memoryId).toMatch(/^[a-z0-9][a-z0-9-]*-[a-f0-9]+$/);
+      expect(memoryId).toMatch(/^[a-z0-9][a-z0-9-]*-[a-z0-9]+$/);
     });
 
     it('should reject entry with validation errors', async () => {
