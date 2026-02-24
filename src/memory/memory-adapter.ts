@@ -52,6 +52,17 @@ interface BeadsIssue {
   updated_at: string;
 }
 
+export interface MemoryCompatibilityReport {
+  bd_available: boolean;
+  bd_version: string | null;
+  supports_create_flags: boolean;
+  supports_update_flags: boolean;
+  configured_no_db: boolean | null;
+  recommended_mode: 'bd' | 'jsonl-fallback' | 'unavailable';
+  warnings: string[];
+  errors: string[];
+}
+
 /**
  * MemoryAdapter provides the core API for memory operations
  */
@@ -117,6 +128,73 @@ export class MemoryAdapter {
       JSON.stringify(config, null, 2),
       'utf-8'
     );
+  }
+
+  /**
+   * Check Beads CLI compatibility for durable-memory operations.
+   * This provides an early diagnostic instead of failing deep in create/update.
+   */
+  getCompatibilityReport(project?: string): MemoryCompatibilityReport {
+    const report: MemoryCompatibilityReport = {
+      bd_available: false,
+      bd_version: null,
+      supports_create_flags: false,
+      supports_update_flags: false,
+      configured_no_db: null,
+      recommended_mode: 'unavailable',
+      warnings: [],
+      errors: [],
+    };
+
+    let createHelp = '';
+    let updateHelp = '';
+    try {
+      const version = this.runBdCommand(['--version'], this.workspaceRoot).trim();
+      report.bd_available = true;
+      report.bd_version = version;
+    } catch (error) {
+      report.errors.push(`Beads CLI unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      return report;
+    }
+
+    try {
+      createHelp = this.runBdCommand(['create', '--help'], this.workspaceRoot);
+      updateHelp = this.runBdCommand(['update', '--help'], this.workspaceRoot);
+    } catch (error) {
+      report.errors.push(`Unable to inspect Beads command help: ${error instanceof Error ? error.message : String(error)}`);
+      report.recommended_mode = 'jsonl-fallback';
+      return report;
+    }
+
+    report.supports_create_flags =
+      createHelp.includes('--description') && createHelp.includes('--labels');
+    report.supports_update_flags =
+      updateHelp.includes('--description') && updateHelp.includes('--set-labels');
+
+    if (!report.supports_create_flags) {
+      report.warnings.push('bd create does not advertise --description/--labels flags expected by MemoryAdapter.');
+    }
+    if (!report.supports_update_flags) {
+      report.warnings.push('bd update does not advertise --description/--set-labels flags expected by MemoryAdapter.');
+    }
+
+    if (project) {
+      const memoryPath = this.getMemoryPath(project);
+      const configPath = path.join(memoryPath, '.beads', 'config.yaml');
+      try {
+        const config = fs.readFileSync(configPath, 'utf-8');
+        report.configured_no_db = /^\s*no-db\s*:\s*true\b/m.test(config);
+        if (!report.configured_no_db) {
+          report.warnings.push('Project .beads/config.yaml does not set no-db: true.');
+        }
+      } catch {
+        report.configured_no_db = null;
+      }
+    }
+
+    report.recommended_mode =
+      report.supports_create_flags && report.supports_update_flags ? 'bd' : 'jsonl-fallback';
+    return report;
   }
 
   /**

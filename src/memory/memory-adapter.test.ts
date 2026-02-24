@@ -150,6 +150,58 @@ describe('MemoryAdapter', () => {
         /duplicate entry detected/i
       );
     });
+
+    it('should fallback to JSONL when bd create reports no database', async () => {
+      await adapter.init(testProject);
+
+      const entry: MemoryEntryInput = {
+        section: 'decisions',
+        kind: 'decision',
+        subject: 'fallback-test',
+        scope: 'repo',
+        summary: 'Use fallback create',
+        content: 'Forcing fallback path',
+        confidence: 0.8,
+        evidence: [
+          {
+            type: 'assumption',
+            uri: 'n/a',
+            note: 'Test fallback behavior'
+          }
+        ],
+        created_by: 'test-agent'
+      };
+
+      const realRunBd = (adapter as any).runBdCommand.bind(adapter);
+      (adapter as any).runBdCommand = (args: string[], cwd: string) => {
+        if (args[0] === 'create') {
+          throw new Error('no beads database found');
+        }
+        return realRunBd(args, cwd);
+      };
+
+      const id = await adapter.create(testProject, entry);
+      expect(id).toMatch(/^test-project-[a-f0-9]+$/);
+
+      const issuesPath = path.join(testWorkspaceRoot, 'ai-memory', testProject, '.beads', 'issues.jsonl');
+      const issuesContent = await fs.promises.readFile(issuesPath, 'utf-8');
+      expect(issuesContent).toContain(id);
+      expect(issuesContent).toContain('fallback-test');
+    });
+  });
+
+  describe('compatibility report', () => {
+    it('should return Beads compatibility diagnostics', () => {
+      const report = adapter.getCompatibilityReport();
+
+      expect(report).toBeDefined();
+      expect(typeof report.bd_available).toBe('boolean');
+      expect(typeof report.supports_create_flags).toBe('boolean');
+      expect(typeof report.supports_update_flags).toBe('boolean');
+      expect(['bd', 'jsonl-fallback', 'unavailable']).toContain(report.recommended_mode);
+      expect(Array.isArray(report.warnings)).toBe(true);
+      expect(Array.isArray(report.errors)).toBe(true);
+    });
   });
 
   describe('supersede', () => {
