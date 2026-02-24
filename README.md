@@ -38,12 +38,21 @@ bass-agents/
 # Clone the repo
 git clone <repo-url> && cd bass-agents
 
+# Install dependencies
+npm install
+
+# Install Beads CLI (required for durable memory system)
+npm install -g @beads/bd
+# OR: brew install beads
+# OR: go install github.com/steveyegge/beads/cmd/bd@latest
+
 # First-time setup (links CLI + agents, installs agtrace/ccusage, initializes .agtrace)
 ./bin/bass-agents init
 
 # Verify
 which bass-agents
 which bassai
+which bd
 ls -la ~/.agents/
 ```
 
@@ -118,7 +127,6 @@ Wrapper flow (launch tool, then auto-review on exit):
 ```bash
 bass-agents run --tool codex --project bass.ai --session-id <agtrace-session-id> --format markdown -- --model gpt-5
 bass-agents run --tool claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60 -- --model sonnet
-bass-agents run --tool claude --smoke-test --run-type smoke --project bass.ai --format markdown -- exec "Reply with exactly: ok"
 ```
 
 Checkpoint flow (generate JSON report + append trend row):
@@ -126,8 +134,15 @@ Checkpoint flow (generate JSON report + append trend row):
 ```bash
 bass-agents checkpoint --source codex --project bass.ai --session-id <agtrace-session-id>
 bass-agents checkpoint --source claude --project bass.ai --session-id <session-id> --max-tokens 20000 --timebox-minutes 60
-bass-agents checkpoint --source codex --run-type workflow --project bass.ai --session-id <agtrace-session-id>
-bass-agents checkpoint --source codex --run-type workflow --project bass.ai --session-id <agtrace-session-id> --enforce-verdict
+```
+
+Dashboard flow (session review):
+
+```bash
+bass-agents dashboard                 # web dashboard (HTML)
+bass-agents dashboard --tui           # terminal dashboard (TUI)
+# optional web output path:
+bass-agents dashboard --root session-reviews --out session-reviews/dashboard.html
 ```
 
 Notes:
@@ -135,25 +150,30 @@ Notes:
 - If `--session-path` is omitted, wrapper uses an internal path hint and relies on `review-session.py` tool-integrated session resolution.
 - If `--session-id` is provided, wrapper passes it through so analysis targets that exact provider session.
 - If `--session-id` is omitted, wrapper/checkpoint generates a `session reference id` and logs it for downstream filenames/tracking.
-- Reports now include `session_reference_id`, `run_type`, and evaluation verdict (`pass|warn|fail`).
-- Wrapper and checkpoint both persist trend rows in `session-reviews/<project>/trend.csv` with `run_type`, `uncached_tokens`, and verdict.
-- Reports include baseline deltas vs the last 5 similar runs (`project + source + run_type`).
-- CI gate policy: `scripts/ci-verdict-gate.py` fails on `workflow`/`real` reports with verdict `fail`; `smoke` is non-blocking.
+- Reports now include `session_reference_id`, and checkpoint trends persist it in `trend.csv`.
 - Override search roots with `BASS_AGENTS_SESSION_DIRS` (colon-separated paths).
 - If `--report-out` is omitted, wrapper writes to `session-reviews/<project>/YYYY-MM-DD-<tool>-session-review-HHMMSS.{md|json}`.
 - If `--session-id` is provided, default report filename appends the id: `...-session-review-HHMMSS-<session-id>.{md|json}`.
 - Project name resolution order for default output: `--project`, then `BASS_AGENTS_PROJECT`, then current directory name.
 - Store generated review reports under `session-reviews/<project>/` (for example: `session-reviews/bass.ai/2026-02-22-claude-session-review-112115.md`).
 - Keep `.agtrace/` local-only (gitignored) so provider paths remain machine-specific and portable across contributors.
+- Dashboard output defaults to `session-reviews/dashboard.html` and can be opened directly in a browser.
 
-CI helper examples:
+Memory dashboard flow:
 
 ```bash
-# Gate an existing JSON report
-python3 scripts/ci-verdict-gate.py --report ./session-reviews/bass.ai/latest.json
+bass-agents memory dashboard bass-agents          # TUI (default)
+bass-agents memory dashboard bass-agents --web    # web HTML output
+bass-agents memory dashboard --all --web --out ai-memory/dashboard.html
+```
 
-# Generate + gate in one step
-scripts/session-review-checkpoint.sh --source codex --run-type workflow --project bass.ai --session-id <id> --enforce-verdict
+Unified flow (both session + memory from one command):
+
+```bash
+bass-agents dashboards                                      # build both web dashboards
+bass-agents dashboards --web --project bass-agents          # web dashboards; memory scoped to one project
+bass-agents dashboards --tui --session                     # session-review TUI
+bass-agents dashboards --tui --memory --project bass-agents # memory TUI
 ```
 
 ## Benchmarks
@@ -163,6 +183,51 @@ To measure whether `bass-agents` improves outcomes versus baseline tool usage:
 - Basic benchmark spec: [`benchmarks/basic-todo-app/README.md`](benchmarks/basic-todo-app/README.md)
 - Scoring rubric: [`benchmarks/basic-todo-app/scoring-rubric.md`](benchmarks/basic-todo-app/scoring-rubric.md)
 - Fixed task fixture: [`fixtures/tasks/basic-todo-app-task.json`](fixtures/tasks/basic-todo-app-task.json)
+
+## Durable Memory System
+
+The durable memory system provides persistent knowledge storage for agents using Beads as the storage layer.
+
+### Requirements
+
+- **Node.js**: v20.10.6 or later
+- **TypeScript**: v5.3.3 or later
+- **Beads CLI**: Required for memory persistence ([installation instructions](https://github.com/steveyegge/beads))
+
+### Installation
+
+```bash
+# Install Node.js dependencies
+npm install
+
+# Install Beads CLI (choose one method)
+npm install -g @beads/bd        # via npm
+brew install beads              # via Homebrew (macOS/Linux)
+go install github.com/steveyegge/beads/cmd/bd@latest  # via Go
+
+# Verify installation
+bd --version
+```
+
+### Usage
+
+```bash
+# Generate test data
+npx ts-node scripts/generate-test-data.ts bass-agents
+
+# View memory statistics
+npx ts-node scripts/view-memory-stats.ts bass-agents
+
+# Run tests
+npm test
+```
+
+### Documentation
+
+- [Durable Memory PRD](docs/prds/2026-02-22-DURABLE-MEMORY.md)
+- [Concurrent Writes](docs/concurrent-writes.md)
+- [Memory Dashboard](docs/memory-dashboard.md)
+- [Specification](.kiro/specs/durable-memory/)
 
 ## Creating a New Agent
 

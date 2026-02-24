@@ -13,9 +13,12 @@ Usage: bass-agents <command> [options]
 Commands:
   init            First-time setup (deps + agtrace + agent links + CLI links)
   install         Link .agent files into ~/.agents and install CLI links
+  memory          Run memory management commands
+  dashboards      Unified dashboard launcher (session + memory, web + tui)
   review          Run review-session.py
   run             Run run-with-bass-agents.sh
   checkpoint      Run session-review-checkpoint.sh
+  dashboard       Build session-review dashboard (web by default, --tui for terminal)
   help            Show this help
 
 init options:
@@ -23,6 +26,19 @@ init options:
   --skip-agtrace      Skip "agtrace init"
   --data-dir <path>   agtrace data dir (default: .agtrace)
   --project <path>    agtrace project root (default: .)
+
+dashboards options:
+  --web               Build web dashboards (default mode)
+  --tui               Launch a TUI dashboard
+  --session           Include session-review dashboard
+  --memory            Include memory dashboard
+  --all               Memory scope: all projects (default)
+  --project <name>    Memory scope: single project
+Examples:
+  bass-agents dashboards
+  bass-agents dashboards --web --session --memory --project bass-agents
+  bass-agents dashboards --tui --session
+  bass-agents dashboards --tui --memory --project bass-agents
 EOF
 }
 
@@ -146,6 +162,109 @@ main() {
       shift
       "$ROOT_DIR/scripts/review-session.py" "$@"
       ;;
+    memory)
+      shift
+      if [ -f "$ROOT_DIR/src/cli/memory-commands.ts" ]; then
+        npx ts-node "$ROOT_DIR/src/cli/memory-commands.ts" "$@"
+      elif [ -f "$ROOT_DIR/dist/cli/memory-commands.js" ]; then
+        node "$ROOT_DIR/dist/cli/memory-commands.js" "$@"
+      else
+        echo "Error: memory CLI not found (expected src/cli/memory-commands.ts or dist/cli/memory-commands.js)" >&2
+        exit 1
+      fi
+      ;;
+    dashboards)
+      shift
+      mode="web"
+      include_session="false"
+      include_memory="false"
+      memory_all="true"
+      memory_project=""
+
+      while (($#)); do
+        case "$1" in
+          --web)
+            mode="web"
+            shift
+            ;;
+          --tui)
+            mode="tui"
+            shift
+            ;;
+          --session)
+            include_session="true"
+            shift
+            ;;
+          --memory)
+            include_memory="true"
+            shift
+            ;;
+          --all)
+            memory_all="true"
+            memory_project=""
+            shift
+            ;;
+          --project)
+            memory_project="${2:-}"
+            if [ -z "$memory_project" ]; then
+              echo "Error: --project requires a value" >&2
+              exit 1
+            fi
+            memory_all="false"
+            shift 2
+            ;;
+          -h|--help)
+            usage
+            exit 0
+            ;;
+          *)
+            echo "Error: unknown dashboards option '$1'" >&2
+            exit 1
+            ;;
+        esac
+      done
+
+      # Default to both scopes if neither specified.
+      if [ "$include_session" = "false" ] && [ "$include_memory" = "false" ]; then
+        include_session="true"
+        include_memory="true"
+      fi
+
+      if [ "$mode" = "web" ]; then
+        if [ "$include_session" = "true" ]; then
+          "$ROOT_DIR/scripts/session-review-dashboard.py"
+          echo "Session review web: $ROOT_DIR/session-reviews/dashboard.html"
+        fi
+        if [ "$include_memory" = "true" ]; then
+          if [ "$memory_all" = "true" ]; then
+            "$0" memory dashboard --all --web --out ai-memory/dashboard.html
+            echo "Memory web (all): $ROOT_DIR/ai-memory/dashboard.html"
+          else
+            "$0" memory dashboard "$memory_project" --web
+            echo "Memory web ($memory_project): $ROOT_DIR/ai-memory/${memory_project}-dashboard.html"
+          fi
+        fi
+      else
+        # TUI mode launches one dashboard process at a time.
+        if [ "$include_session" = "true" ] && [ "$include_memory" = "true" ]; then
+          echo "TUI mode supports one dashboard at a time. Launching session-review TUI first."
+          "$ROOT_DIR/scripts/session-review-dashboard-tui.py"
+          if [ "$memory_all" = "true" ]; then
+            "$0" memory dashboard --all
+          else
+            "$0" memory dashboard "$memory_project"
+          fi
+        elif [ "$include_session" = "true" ]; then
+          "$ROOT_DIR/scripts/session-review-dashboard-tui.py"
+        elif [ "$include_memory" = "true" ]; then
+          if [ "$memory_all" = "true" ]; then
+            "$0" memory dashboard --all
+          else
+            "$0" memory dashboard "$memory_project"
+          fi
+        fi
+      fi
+      ;;
     run)
       shift
       "$ROOT_DIR/scripts/run-with-bass-agents.sh" "$@"
@@ -153,6 +272,31 @@ main() {
     checkpoint)
       shift
       "$ROOT_DIR/scripts/session-review-checkpoint.sh" "$@"
+      ;;
+    dashboard)
+      shift
+      dashboard_mode="web"
+      filtered_args=()
+      for arg in "$@"; do
+        if [ "$arg" = "--tui" ]; then
+          dashboard_mode="tui"
+          continue
+        fi
+        filtered_args+=("$arg")
+      done
+      if [ "$dashboard_mode" = "tui" ]; then
+        if [ ${#filtered_args[@]} -gt 0 ]; then
+          "$ROOT_DIR/scripts/session-review-dashboard-tui.py" "${filtered_args[@]}"
+        else
+          "$ROOT_DIR/scripts/session-review-dashboard-tui.py"
+        fi
+      else
+        if [ ${#filtered_args[@]} -gt 0 ]; then
+          "$ROOT_DIR/scripts/session-review-dashboard.py" "${filtered_args[@]}"
+        else
+          "$ROOT_DIR/scripts/session-review-dashboard.py"
+        fi
+      fi
       ;;
     help|-h|--help)
       usage
