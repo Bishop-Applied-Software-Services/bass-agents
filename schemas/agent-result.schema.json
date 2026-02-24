@@ -117,6 +117,115 @@
         },
         "additionalProperties": false
       }
+    },
+    "memory_updates": {
+      "type": "array",
+      "description": "Memory update operations to be applied after this task completes.",
+      "items": {
+        "type": "object",
+        "required": ["operation", "entry"],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": ["create", "supersede", "deprecate"],
+            "description": "Type of memory update operation."
+          },
+          "entry": {
+            "type": "object",
+            "required": ["content", "confidence", "evidence"],
+            "properties": {
+              "section": {
+                "type": "string",
+                "enum": ["decisions", "state", "observations", "learnings"],
+                "description": "Required for create operation."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["decision", "requirement", "invariant", "incident", "metric", "hypothesis", "runbook_step", "other"],
+                "description": "Required for create operation."
+              },
+              "subject": {
+                "type": "string",
+                "description": "Required for create operation. Canonical entity key."
+              },
+              "scope": {
+                "type": "string",
+                "pattern": "^(repo|service:[^:]+|org|customer|environment:(prod|staging))$",
+                "description": "Required for create operation."
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 300,
+                "description": "Required for create operation."
+              },
+              "content": {
+                "type": "string",
+                "maxLength": 2000,
+                "description": "Required for all operations."
+              },
+              "tags": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Optional flexible categorization tags."
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": "Required confidence score."
+              },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["type", "uri", "note"],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["artifact", "code", "log", "screenshot", "assumption", "ticket", "doc"]
+                    },
+                    "uri": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "description": "Required evidence array."
+              },
+              "status": {
+                "type": "string",
+                "enum": ["active", "superseded", "deprecated", "draft"],
+                "description": "Optional, defaults to active for create."
+              },
+              "valid_from": {
+                "type": ["string", "null"],
+                "format": "date-time",
+                "description": "Optional ISO 8601 timestamp."
+              },
+              "valid_to": {
+                "type": ["string", "null"],
+                "format": "date-time",
+                "description": "Optional ISO 8601 timestamp."
+              },
+              "related_entries": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Optional Memory IDs of related entries."
+              }
+            },
+            "additionalProperties": false
+          },
+          "target_id": {
+            "type": "string",
+            "description": "Required for supersede/deprecate operations. Memory ID to update."
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false
