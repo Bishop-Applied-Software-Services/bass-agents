@@ -14,5 +14,14 @@ typescript
 __pycache__/
 *.pyc
 
+# Node dependencies
+node_modules/
+
+# Generated build output
+dist/
+
+# Local Beads backup snapshots
+.beads.backup-*/
+
 # Local editor settings
 .vscode/

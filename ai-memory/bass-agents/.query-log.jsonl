@@ -1,0 +1,2 @@
+{"timestamp":"2026-02-22T22:36:53.477Z","project":"bass-agents","filters":{"status":["active"],"minConfidence":0.6,"limit":50},"result_count":0}
+{"timestamp":"2026-02-22T22:37:06.658Z","project":"bass-agents","filters":{"status":["active"],"minConfidence":0.6,"limit":50},"result_count":9}

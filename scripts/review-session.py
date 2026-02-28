@@ -87,26 +87,34 @@ def clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
 
 def maybe_json(text: str) -> Any:
     text = ANSI_ESCAPE_RE.sub("", text).replace("\r", "").strip()
+    docs = extract_json_documents(text)
+    return docs[0]
+
+
+def extract_json_documents(text: str) -> List[Any]:
     if not text:
         raise ValueError("empty output")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Tools may emit progress lines before/after JSON.
-    starts = [idx for idx, ch in enumerate(text) if ch in "{["]
-    if not starts:
-        raise ValueError("no JSON found in tool output")
-
     decoder = json.JSONDecoder()
-    for start in starts:
+    docs: List[Any] = []
+    cursor = 0
+    while cursor < len(text):
+        obj_start = text.find("{", cursor)
+        arr_start = text.find("[", cursor)
+        starts = [x for x in (obj_start, arr_start) if x >= 0]
+        if not starts:
+            break
+        start = min(starts)
         try:
-            parsed, _ = decoder.raw_decode(text[start:])
-            return parsed
+            doc, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError:
+            cursor = start + 1
             continue
-    raise ValueError("no decodable JSON found in tool output")
+        docs.append(doc)
+        cursor = end
+
+    if not docs:
+        raise ValueError("no JSON found in tool output")
+    return docs
 
 
 def run_json_command(cmd: List[str]) -> Any:
@@ -188,13 +196,48 @@ def agtrace_session(args: argparse.Namespace, provider: str, session_id: str | N
         if not resolved_id:
             raise ToolError("agtrace session list returned missing session id")
 
-    shown = run_json_command(base + ["session", "show", resolved_id, "--format", "json"])
+    show_cmd = base + ["session", "show", resolved_id, "--format", "json"]
+    code, out, err = run_command(show_cmd)
+    if code != 0:
+        msg = (err or out or "").strip()
+        raise ToolError(f"command failed ({' '.join(show_cmd)}): {msg}")
+    try:
+        shown = parse_agtrace_show_output(out)
+    except Exception as exc:
+        raise ToolError(f"invalid JSON from {' '.join(show_cmd)}") from exc
+
     shown_provider = shown.get("content", {}).get("header", {}).get("provider")
     if shown_provider and shown_provider != provider:
         raise ToolError(
             f"session id {resolved_id} is provider={shown_provider}, expected provider={provider}"
         )
     return shown
+
+
+def parse_agtrace_show_output(text: str) -> Dict[str, Any]:
+    docs = extract_json_documents(text)
+    primary = docs[0]
+    if not isinstance(primary, dict):
+        raise ValueError("agtrace session show returned a non-object JSON payload")
+
+    extra_streams = [doc for doc in docs[1:] if isinstance(doc, dict)]
+    if not extra_streams:
+        return primary
+
+    content = primary.setdefault("content", {})
+    existing = content.get("additional_streams", [])
+    if not isinstance(existing, list):
+        existing = []
+    content["additional_streams"] = existing + extra_streams
+    return primary
+
+
+def agtrace_stream_payloads(show_json: Dict[str, Any]) -> List[Dict[str, Any]]:
+    streams = [show_json]
+    extras = show_json.get("content", {}).get("additional_streams", [])
+    if isinstance(extras, list):
+        streams.extend(stream for stream in extras if isinstance(stream, dict))
+    return streams
 
 
 def pick_most_common(items: List[str]) -> str | None:
@@ -205,47 +248,45 @@ def pick_most_common(items: List[str]) -> str | None:
 
 
 def infer_codex_model_from_logs(agtrace_show: Dict[str, Any]) -> str | None:
-    header = agtrace_show.get("content", {}).get("header", {})
-    log_files = header.get("log_files", [])
-    if not isinstance(log_files, list):
-        return None
-
     candidates: List[str] = []
-    for log_file in log_files:
-        if not isinstance(log_file, str) or not os.path.isfile(log_file):
+    for stream in agtrace_stream_payloads(agtrace_show):
+        header = stream.get("content", {}).get("header", {})
+        log_files = header.get("log_files", [])
+        if not isinstance(log_files, list):
             continue
-        try:
-            with open(log_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    for n in walk(obj):
-                        if not isinstance(n, dict):
+
+        for log_file in log_files:
+            if not isinstance(log_file, str) or not os.path.isfile(log_file):
+                continue
+            try:
+                with open(log_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
                             continue
-                        v = n.get("model")
-                        if not isinstance(v, str):
+                        try:
+                            obj = json.loads(line)
+                        except json.JSONDecodeError:
                             continue
-                        model = v.strip()
-                        # Restrict to model-id-like tokens, not prose labels.
-                        if " " in model:
-                            continue
-                        if model.startswith("gpt-") or model.startswith("o") or "codex" in model:
-                            candidates.append(model)
-        except OSError:
-            continue
+                        for n in walk(obj):
+                            if not isinstance(n, dict):
+                                continue
+                            v = n.get("model")
+                            if not isinstance(v, str):
+                                continue
+                            model = v.strip()
+                            # Restrict to model-id-like tokens, not prose labels.
+                            if " " in model:
+                                continue
+                            if model.startswith("gpt-") or model.startswith("o") or "codex" in model:
+                                candidates.append(model)
+            except OSError:
+                continue
 
     return pick_most_common(candidates)
 
 
 def summarize_from_agtrace(show_json: Dict[str, Any]) -> Dict[str, Any]:
-    content = show_json.get("content", {})
-    turns = content.get("turns", []) or []
-
     input_tokens = 0
     output_tokens = 0
     cache_read_tokens = 0
@@ -254,33 +295,36 @@ def summarize_from_agtrace(show_json: Dict[str, Any]) -> Dict[str, Any]:
     retry_loops = 0
     user_queries: List[str] = []
 
-    for turn in turns:
-        metrics = turn.get("metrics", {}) or {}
-        input_tokens += int(metrics.get("input_tokens", 0) or 0)
-        output_tokens += int(metrics.get("output_tokens", 0) or 0)
-        cache_read_tokens += int(metrics.get("cache_read_tokens", 0) or 0)
+    for stream in agtrace_stream_payloads(show_json):
+        content = stream.get("content", {})
+        turns = content.get("turns", []) or []
+        for turn in turns:
+            metrics = turn.get("metrics", {}) or {}
+            input_tokens += int(metrics.get("input_tokens", 0) or 0)
+            output_tokens += int(metrics.get("output_tokens", 0) or 0)
+            cache_read_tokens += int(metrics.get("cache_read_tokens", 0) or 0)
 
-        user_query = turn.get("user_query")
-        if isinstance(user_query, str) and user_query.strip():
-            messages += 1
-            norm = normalize_text(user_query)
-            user_queries.append(norm)
-            if any(tok in norm for tok in RETRY_TOKENS):
-                retry_loops += 1
-
-        for step in turn.get("steps", []) or []:
-            kind = step.get("kind")
-            if kind == "Message":
+            user_query = turn.get("user_query")
+            if isinstance(user_query, str) and user_query.strip():
                 messages += 1
-                text = step.get("text")
-                if isinstance(text, str):
-                    norm = normalize_text(text)
-                    if any(tok in norm for tok in RETRY_TOKENS):
-                        retry_loops += 1
-            elif kind == "ToolCall":
-                tool_calls += 1
-            elif kind == "ToolCallSequence":
-                tool_calls += int(step.get("count", 0) or 0)
+                norm = normalize_text(user_query)
+                user_queries.append(norm)
+                if any(tok in norm for tok in RETRY_TOKENS):
+                    retry_loops += 1
+
+            for step in turn.get("steps", []) or []:
+                kind = step.get("kind")
+                if kind == "Message":
+                    messages += 1
+                    text = step.get("text")
+                    if isinstance(text, str):
+                        norm = normalize_text(text)
+                        if any(tok in norm for tok in RETRY_TOKENS):
+                            retry_loops += 1
+                elif kind == "ToolCall":
+                    tool_calls += 1
+                elif kind == "ToolCallSequence":
+                    tool_calls += int(step.get("count", 0) or 0)
 
     total_tokens = input_tokens + output_tokens + cache_read_tokens
     avg_tokens_per_message = (total_tokens / messages) if messages > 0 else 0.0
@@ -304,26 +348,38 @@ def summarize_from_agtrace(show_json: Dict[str, Any]) -> Dict[str, Any]:
         "repeated_context_ratio": round(repeated_context_ratio, 3),
     }
 
-
-def ccusage_session(session_id: str | None) -> Dict[str, Any]:
-    if session_id:
-        payload = run_json_command(["ccusage", "session", "--json", "--id", session_id])
-        # Some ccusage versions return a single session object for --id.
-        if isinstance(payload, dict) and payload.get("sessionId"):
-            return payload
-        sessions = payload.get("sessions", []) if isinstance(payload, dict) else []
-        if not sessions:
-            raise ToolError(f"ccusage returned no session for --id {session_id}")
-        return sessions[0]
-
+def ccusage_sessions() -> List[Dict[str, Any]]:
     payload = run_json_command(["ccusage", "session", "--json", "--order", "desc"])
-    sessions = payload.get("sessions", []) if isinstance(payload, dict) else []
+    sessions = payload.get("sessions", [])
     if not sessions:
         raise ToolError("ccusage returned no sessions")
-    return sessions[0]
+    return [session for session in sessions if isinstance(session, dict)]
 
 
-def merge_claude_summary(ccusage_session: Dict[str, Any], agtrace_summary: Dict[str, Any]) -> Dict[str, Any]:
+def ccusage_session(session_id: str | None) -> Dict[str, Any] | None:
+    if not session_id:
+        return None
+
+    try:
+        payload = run_json_command(["ccusage", "session", "--json", "--id", session_id])
+    except ToolError:
+        return None
+
+    if isinstance(payload, dict) and payload.get("sessionId") == session_id:
+        return payload
+
+    sessions = payload.get("sessions", []) if isinstance(payload, dict) else []
+    for session in sessions:
+        if isinstance(session, dict) and session.get("sessionId") == session_id:
+            return session
+
+    return None
+
+
+def merge_claude_summary(ccusage_session: Dict[str, Any] | None, agtrace_summary: Dict[str, Any]) -> Dict[str, Any]:
+    if ccusage_session is None:
+        return dict(agtrace_summary)
+
     input_tokens = int(ccusage_session.get("inputTokens", 0) or 0)
     output_tokens = int(ccusage_session.get("outputTokens", 0) or 0)
     cache_read_tokens = int(ccusage_session.get("cacheReadTokens", 0) or 0)
@@ -1042,7 +1098,8 @@ def main() -> int:
             agtrace_summary = summarize_from_agtrace(agtrace_show)
             claude_session_id = args.session_id or agtrace_show.get("content", {}).get("header", {}).get("session_id")
             ccusage_data = ccusage_session(claude_session_id)
-            raw_sources["ccusage"] = ccusage_data
+            if ccusage_data is not None:
+                raw_sources["ccusage"] = ccusage_data
             summary = merge_claude_summary(ccusage_data, agtrace_summary)
             model_used = infer_model_used(source, agtrace_show, ccusage_data=ccusage_data)
             source_reliability = 0.95
