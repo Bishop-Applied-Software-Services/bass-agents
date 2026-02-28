@@ -1,6 +1,6 @@
 # Memory Analytics Dashboard
 
-The Memory Analytics Dashboard provides real-time visualization of your durable memory system's activity, health, and usage patterns. This guide covers how to launch the dashboard, interpret its metrics, and use the statistics API for programmatic access.
+The Memory Analytics Dashboard provides real-time visualization of your durable memory system's activity, health, and usage patterns. In web mode, it also includes the repo's top-level Beads ticket tracker so you can manage operational issues and durable memory from one page. This guide covers how to launch the dashboard, interpret its metrics, and use the statistics API for programmatic access.
 
 ## Table of Contents
 
@@ -27,6 +27,11 @@ Generate a web dashboard instead of launching TUI:
 ```bash
 bass-agents memory dashboard <project> --web
 ```
+
+Web mode note:
+
+- `bass-agents memory dashboard --web` builds a workspace dashboard that combines top-level Beads tickets with durable-memory entries from `ai-memory/`.
+- `bass-agents memory dashboard` without `--web` remains the durable-memory TUI.
 
 ### Command Options
 

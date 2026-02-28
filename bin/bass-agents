@@ -14,7 +14,7 @@ Commands:
   init            First-time setup (deps + agtrace + agent links + CLI links)
   install         Link .agent files into ~/.agents and install CLI links
   memory          Run memory management commands
-  dashboards      Unified dashboard launcher (session + memory, web + tui)
+  dashboards      Unified dashboard launcher (session + workspace, web + tui)
   review          Run review-session.py
   run             Run run-with-bass-agents.sh
   checkpoint      Run session-review-checkpoint.sh
@@ -31,7 +31,7 @@ dashboards options:
   --web               Build web dashboards (default mode)
   --tui               Launch a TUI dashboard
   --session           Include session-review dashboard
-  --memory            Include memory dashboard
+  --memory            Include workspace dashboard (tickets + durable memory in web mode)
   --all               Memory scope: all projects (default)
   --project <name>    Memory scope: single project
 Examples:
@@ -238,10 +238,10 @@ main() {
         if [ "$include_memory" = "true" ]; then
           if [ "$memory_all" = "true" ]; then
             "$0" memory dashboard --all --web --out ai-memory/dashboard.html
-            echo "Memory web (all): $ROOT_DIR/ai-memory/dashboard.html"
+            echo "Workspace web (all memory projects): $ROOT_DIR/ai-memory/dashboard.html"
           else
             "$0" memory dashboard "$memory_project" --web
-            echo "Memory web ($memory_project): $ROOT_DIR/ai-memory/${memory_project}-dashboard.html"
+            echo "Workspace web ($memory_project): $ROOT_DIR/ai-memory/${memory_project}-dashboard.html"
           fi
         fi
       else
