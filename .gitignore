@@ -17,6 +17,9 @@ __pycache__/
 # Node dependencies
 node_modules/
 
+# Generated build output
+dist/
+
 # Local Beads backup snapshots
 .beads.backup-*/
 
