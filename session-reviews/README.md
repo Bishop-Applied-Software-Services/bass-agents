@@ -8,3 +8,11 @@ Convention:
 
 Example:
 - `session-reviews/bass.ai/2026-02-22-claude-session-review-112115.md`
+
+Dashboard:
+- Build static dashboard HTML from all project trend/report data:
+  - `bass-agents dashboard`
+- Launch terminal dashboard:
+  - `bass-agents dashboard --tui`
+- Default output:
+  - `session-reviews/dashboard.html`

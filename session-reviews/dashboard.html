@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Session Review Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4f0e6;
+      --panel: #fffaf2;
+      --ink: #13213a;
+      --muted: #4d5b7a;
+      --line: #d4c8ad;
+      --accent: #005f73;
+      --accent-soft: #0a9396;
+      --warning: #bb3e03;
+      --good: #2a9d8f;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      --sans: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #d9edc4 0%, transparent 55%),
+        radial-gradient(1200px 700px at 100% -20%, #cdebf6 0%, transparent 45%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 24px auto 40px;
+      padding: 0 16px;
+      animation: fadeUp .4s ease-out both;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .title {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+    .meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .controls {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .controls label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    select, input {
+      font: inherit;
+      border: 1px solid #bcae8f;
+      border-radius: 8px;
+      padding: 7px 9px;
+      background: #fff;
+      min-width: 150px;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(12, 1fr);
+      margin-bottom: 12px;
+    }
+    .card {
+      grid-column: span 3;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .k {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .v {
+      font-family: var(--mono);
+      font-size: 1.45rem;
+      font-weight: 700;
+    }
+    .v.good { color: var(--good); }
+    .v.warn { color: var(--warning); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+    .bars {
+      display: grid;
+      gap: 8px;
+    }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 70px;
+      gap: 8px;
+      align-items: center;
+      font-size: .9rem;
+    }
+    .bar-track {
+      background: #e8dfcd;
+      height: 12px;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      background: linear-gradient(90deg, var(--accent), var(--accent-soft));
+      height: 100%;
+      width: 0;
+      transition: width .25s ease;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .88rem;
+    }
+    th, td {
+      border-bottom: 1px solid #e4dac6;
+      text-align: left;
+      padding: 7px 5px;
+      vertical-align: top;
+    }
+    th {
+      font-size: .74rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .mono { font-family: var(--mono); }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: .72rem;
+      font-weight: 600;
+      background: #d9ecef;
+      color: #10485f;
+    }
+    .hint { color: var(--muted); font-size: .84rem; }
+    @media (max-width: 1000px) {
+      .card { grid-column: span 6; }
+      .bar-row { grid-template-columns: 105px 1fr 58px; }
+    }
+    @media (max-width: 640px) {
+      .header { flex-direction: column; align-items: flex-start; }
+      .card { grid-column: span 12; }
+      .controls label { width: 100%; }
+      select, input { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1 class="title">Session Review Dashboard</h1>
+        <div id="meta" class="meta"></div>
+      </div>
+      <div class="hint">Generated static file from local review artifacts.</div>
+    </div>
+
+    <div class="controls">
+      <label>Project
+        <select id="projectFilter"></select>
+      </label>
+      <label>Source
+        <select id="sourceFilter">
+          <option value="all">all</option>
+        </select>
+      </label>
+      <label>Min composite
+        <input id="minComposite" type="number" min="0" max="100" step="1" value="0" />
+      </label>
+      <label>Rows
+        <select id="rowLimit">
+          <option value="20">20</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="500">500</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="grid">
+      <div class="card"><div class="k">Sessions</div><div class="v mono" id="kSessions">0</div></div>
+      <div class="card"><div class="k">Total Tokens</div><div class="v mono" id="kTokens">0</div></div>
+      <div class="card"><div class="k">Avg Composite</div><div class="v mono" id="kComposite">0</div></div>
+      <div class="card"><div class="k">Avg Efficiency</div><div class="v mono" id="kEfficiency">0</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Token Load by Project</h2>
+      <div id="projectBars" class="bars"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Latest Recommendations</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Project</th><th>Source</th><th>Recommendation</th><th>Impact</th>
+          </tr>
+        </thead>
+        <tbody id="recsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Recent Sessions</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Project</th><th>Source</th><th>Total tokens</th><th>Composite</th><th>Tool calls</th><th>Retry</th><th>Session ref</th>
+          </tr>
+        </thead>
+        <tbody id="sessionsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const DATA = {"rows": [{"project": "bass.ai", "date": "2026-02-22", "source": "codex", "session_id": "019c864b-0a2e-7dd2-be82-c2967b70bf10", "session_reference_id": "auto-20260222-125410-10389", "total_tokens": 6694317, "input_tokens": 325870, "output_tokens": 67647, "tool_calls": 157, "retry_loops": 12, "efficiency": 9.29, "reliability": 84.0, "composite": 21.05, "estimated_cost_usd": 0.0, "report_path": "/Users/jackbishop/dev/bass-agents/session-reviews/bass.ai/2026-02-22-codex-session-review-125410-auto-20260222-125410-10389.json", "report_file": "2026-02-22-codex-session-review-125410-auto-20260222-125410-10389.json", "report": {"report_id": "session-review-6142935d", "generated_at": "2026-02-22T17:54:11.225484+00:00", "model_used": "", "source": "codex", "scores": {"efficiency": 9.29, "reliability": 84.0, "composite": 21.05}, "summary": {"total_tokens": 6694317, "tool_calls": 157, "retry_loops": 12, "messages": 74}, "recommendations": [{"id": "R-001", "action": "Use a tighter initial task contract and avoid re-sending unchanged full context every turn.", "expected_impact": "high"}, {"id": "R-002", "action": "Add explicit acceptance criteria and stop conditions to reduce retry loops.", "expected_impact": "high"}, {"id": "R-003", "action": "Use agtrace and ccusage as standard diagnostics before tuning prompts manually.", "expected_impact": "medium"}], "top_token_drivers": [{"rank": 1, "driver": "Session size", "estimated_token_impact": 6694317}, {"rank": 2, "driver": "High tokens per message", "estimated_token_impact": 1332943}, {"rank": 3, "driver": "High tool-call volume", "estimated_token_impact": 16440}]}}, {"project": "bass.ai", "date": "2026-02-22", "source": "codex", "session_id": "019c8671-1b0a-7ac3-8fdd-ce00133331ef", "session_reference_id": "019c8671-1b0a-7ac3-8fdd-ce00133331ef", "total_tokens": 8711, "input_tokens": 2146, "output_tokens": 37, "tool_calls": 0, "retry_loops": 0, "efficiency": 62.58, "reliability": 84.0, "composite": 83.7, "estimated_cost_usd": 0.0, "report_path": "/Users/jackbishop/dev/bass-agents/session-reviews/bass.ai/2026-02-22-codex-session-review-125309-019c8671-1b0a-7ac3-8fdd-ce00133331ef.json", "report_file": "2026-02-22-codex-session-review-125309-019c8671-1b0a-7ac3-8fdd-ce00133331ef.json", "report": {"report_id": "session-review-511580ad", "generated_at": "2026-02-22T17:53:09.568533+00:00", "model_used": "", "source": "codex", "scores": {"efficiency": 62.58, "reliability": 84.0, "composite": 83.7}, "summary": {"total_tokens": 8711, "tool_calls": 0, "retry_loops": 0, "messages": 2}, "recommendations": [{"id": "R-001", "action": "Use a tighter initial task contract and avoid re-sending unchanged full context every turn.", "expected_impact": "high"}, {"id": "R-002", "action": "Keep turn objectives single-purpose and cap response scope per turn.", "expected_impact": "medium"}, {"id": "R-003", "action": "Use agtrace and ccusage as standard diagnostics before tuning prompts manually.", "expected_impact": "medium"}], "top_token_drivers": [{"rank": 1, "driver": "Session size", "estimated_token_impact": 8711}, {"rank": 2, "driver": "High tokens per message", "estimated_token_impact": 3955}]}}, {"project": "bass.ai", "date": "2026-02-22", "source": "codex", "session_id": "019c8671-1b0a-7ac3-8fdd-ce00133331ef", "session_reference_id": "019c8671-1b0a-7ac3-8fdd-ce00133331ef", "total_tokens": 8711, "input_tokens": 2146, "output_tokens": 37, "tool_calls": 0, "retry_loops": 0, "efficiency": 62.58, "reliability": 84.0, "composite": 83.7, "estimated_cost_usd": 0.0, "report_path": "/Users/jackbishop/dev/bass-agents/session-reviews/bass.ai/2026-02-22-codex-session-review-125243-019c8671-1b0a-7ac3-8fdd-ce00133331ef.json", "report_file": "2026-02-22-codex-session-review-125243-019c8671-1b0a-7ac3-8fdd-ce00133331ef.json", "report": {"report_id": "session-review-2a404f60", "generated_at": "2026-02-22T17:52:43.995883+00:00", "model_used": "", "source": "codex", "scores": {"efficiency": 62.58, "reliability": 84.0, "composite": 83.7}, "summary": {"total_tokens": 8711, "tool_calls": 0, "retry_loops": 0, "messages": 2}, "recommendations": [{"id": "R-001", "action": "Use a tighter initial task contract and avoid re-sending unchanged full context every turn.", "expected_impact": "high"}, {"id": "R-002", "action": "Keep turn objectives single-purpose and cap response scope per turn.", "expected_impact": "medium"}, {"id": "R-003", "action": "Use agtrace and ccusage as standard diagnostics before tuning prompts manually.", "expected_impact": "medium"}], "top_token_drivers": [{"rank": 1, "driver": "Session size", "estimated_token_impact": 8711}, {"rank": 2, "driver": "High tokens per message", "estimated_token_impact": 3955}]}}, {"project": "bass.ai", "date": "2026-02-22", "source": "codex", "session_id": "019c864b-0a2e-7dd2-be82-c2967b70bf10", "session_reference_id": "", "total_tokens": 5681713, "input_tokens": 310912, "output_tokens": 60337, "tool_calls": 139, "retry_loops": 12, "efficiency": 10.0, "reliability": 84.0, "composite": 22.1, "estimated_cost_usd": 0.0, "report_path": "/Users/jackbishop/dev/bass-agents/session-reviews/bass.ai/2026-02-22-codex-session-review-125132-auto-20260222-125132-2288.json", "report_file": "2026-02-22-codex-session-review-125132-auto-20260222-125132-2288.json", "report": {"report_id": "session-review-150d073d", "generated_at": "2026-02-22T17:51:33.327691+00:00", "model_used": "", "source": "codex", "scores": {"efficiency": 10.0, "reliability": 84.0, "composite": 22.1}, "summary": {"total_tokens": 5681713, "tool_calls": 139, "retry_loops": 12, "messages": 67}, "recommendations": [{"id": "R-001", "action": "Use a tighter initial task contract and avoid re-sending unchanged full context every turn.", "expected_impact": "high"}, {"id": "R-002", "action": "Add explicit acceptance criteria and stop conditions to reduce retry loops.", "expected_impact": "high"}, {"id": "R-003", "action": "Use agtrace and ccusage as standard diagnostics before tuning prompts manually.", "expected_impact": "medium"}], "top_token_drivers": [{"rank": 1, "driver": "Session size", "estimated_token_impact": 5681713}, {"rank": 2, "driver": "High tokens per message", "estimated_token_impact": 1130982}, {"rank": 3, "driver": "High tool-call volume", "estimated_token_impact": 14280}]}}, {"project": "bass.ai", "date": "2026-02-22", "source": "codex", "session_id": "019c8671-1b0a-7ac3-8fdd-ce00133331ef", "session_reference_id": "", "total_tokens": 8711, "input_tokens": 2146, "output_tokens": 37, "tool_calls": 0, "retry_loops": 0, "efficiency": 62.58, "reliability": 84.0, "composite": 83.7, "estimated_cost_usd": 0.0, "report_path": "/Users/jackbishop/dev/bass-agents/session-reviews/bass.ai/2026-02-22-codex-session-review-124833-019c8671-1b0a-7ac3-8fdd-ce00133331ef.json", "report_file": "2026-02-22-codex-session-review-124833-019c8671-1b0a-7ac3-8fdd-ce00133331ef.json", "report": {"report_id": "session-review-48862d24", "generated_at": "2026-02-22T17:48:34.281673+00:00", "model_used": "", "source": "codex", "scores": {"efficiency": 62.58, "reliability": 84.0, "composite": 83.7}, "summary": {"total_tokens": 8711, "tool_calls": 0, "retry_loops": 0, "messages": 2}, "recommendations": [{"id": "R-001", "action": "Use a tighter initial task contract and avoid re-sending unchanged full context every turn.", "expected_impact": "high"}, {"id": "R-002", "action": "Keep turn objectives single-purpose and cap response scope per turn.", "expected_impact": "medium"}, {"id": "R-003", "action": "Use agtrace and ccusage as standard diagnostics before tuning prompts manually.", "expected_impact": "medium"}], "top_token_drivers": [{"rank": 1, "driver": "Session size", "estimated_token_impact": 8711}, {"rank": 2, "driver": "High tokens per message", "estimated_token_impact": 3955}]}}, {"project": "bass.ai", "date": "2026-02-22", "source": "codex", "session_id": "019c864b-0a2e-7dd2-be82-c2967b70bf10", "session_reference_id": "", "total_tokens": 3596116, "input_tokens": 281389, "output_tokens": 48423, "tool_calls": 110, "retry_loops": 8, "efficiency": 10.0, "reliability": 84.0, "composite": 36.5, "estimated_cost_usd": 0.0, "report_path": "/Users/jackbishop/dev/bass-agents/session-reviews/bass.ai/2026-02-22-codex-session-review-124607-019c864b-0a2e-7dd2-be82-c2967b70bf10.json", "report_file": "2026-02-22-codex-session-review-124607-019c864b-0a2e-7dd2-be82-c2967b70bf10.json", "report": {"report_id": "session-review-d2ef749f", "generated_at": "2026-02-22T17:46:08.233255+00:00", "model_used": "", "source": "codex", "scores": {"efficiency": 10.0, "reliability": 84.0, "composite": 36.5}, "summary": {"total_tokens": 3596116, "tool_calls": 110, "retry_loops": 8, "messages": 54}, "recommendations": [{"id": "R-001", "action": "Use a tighter initial task contract and avoid re-sending unchanged full context every turn.", "expected_impact": "high"}, {"id": "R-002", "action": "Add explicit acceptance criteria and stop conditions to reduce retry loops.", "expected_impact": "high"}, {"id": "R-003", "action": "Use agtrace and ccusage as standard diagnostics before tuning prompts manually.", "expected_impact": "medium"}], "top_token_drivers": [{"rank": 1, "driver": "Session size", "estimated_token_impact": 3596116}, {"rank": 2, "driver": "High tokens per message", "estimated_token_impact": 714903}, {"rank": 3, "driver": "High tool-call volume", "estimated_token_impact": 10800}]}}], "generated_at": "2026-02-22T23:42:00+00:00"};
+
+    const fmtInt = (n) => new Intl.NumberFormat().format(Number(n || 0));
+    const fmt1 = (n) => Number(n || 0).toFixed(1);
+    const byNewest = (a, b) => (a.sort_key < b.sort_key ? 1 : -1);
+
+    const rows = (DATA.rows || []).map(r => ({
+      ...r,
+      sort_key: `${r.date || ''} ${r.report_file || ''}`
+    })).sort(byNewest);
+
+    const projectFilter = document.getElementById('projectFilter');
+    const sourceFilter = document.getElementById('sourceFilter');
+    const minComposite = document.getElementById('minComposite');
+    const rowLimit = document.getElementById('rowLimit');
+    const meta = document.getElementById('meta');
+
+    const projects = ['all', ...Array.from(new Set(rows.map(r => r.project))).sort()];
+    for (const project of projects) {
+      const opt = document.createElement('option');
+      opt.value = project;
+      opt.textContent = project;
+      projectFilter.appendChild(opt);
+    }
+    const sources = Array.from(new Set(rows.map(r => r.source))).filter(Boolean).sort();
+    for (const src of sources) {
+      const opt = document.createElement('option');
+      opt.value = src;
+      opt.textContent = src;
+      sourceFilter.appendChild(opt);
+    }
+
+    const pickRows = () => {
+      const p = projectFilter.value;
+      const s = sourceFilter.value;
+      const min = Number(minComposite.value || 0);
+      return rows.filter(r =>
+        (p === 'all' || r.project === p) &&
+        (s === 'all' || r.source === s) &&
+        Number(r.composite || 0) >= min
+      );
+    };
+
+    function render() {
+      const picked = pickRows();
+      const limited = picked.slice(0, Number(rowLimit.value || 50));
+      const totalTokens = picked.reduce((a, r) => a + Number(r.total_tokens || 0), 0);
+      const avgComposite = picked.length ? picked.reduce((a, r) => a + Number(r.composite || 0), 0) / picked.length : 0;
+      const avgEfficiency = picked.length ? picked.reduce((a, r) => a + Number(r.efficiency || 0), 0) / picked.length : 0;
+
+      document.getElementById('kSessions').textContent = fmtInt(picked.length);
+      document.getElementById('kTokens').textContent = fmtInt(totalTokens);
+
+      const c = document.getElementById('kComposite');
+      c.textContent = fmt1(avgComposite);
+      c.className = `v mono ${avgComposite >= 70 ? 'good' : avgComposite < 40 ? 'warn' : ''}`;
+
+      const e = document.getElementById('kEfficiency');
+      e.textContent = fmt1(avgEfficiency);
+      e.className = `v mono ${avgEfficiency >= 70 ? 'good' : avgEfficiency < 40 ? 'warn' : ''}`;
+
+      meta.textContent = `${picked.length} filtered rows | generated ${DATA.generated_at}`;
+
+      const byProject = new Map();
+      for (const row of picked) {
+        const prev = byProject.get(row.project) || 0;
+        byProject.set(row.project, prev + Number(row.total_tokens || 0));
+      }
+      const projItems = Array.from(byProject.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12);
+      const maxTokens = Math.max(1, ...projItems.map(x => x[1]));
+      const projectBars = document.getElementById('projectBars');
+      projectBars.innerHTML = '';
+      for (const [project, tokens] of projItems) {
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        row.innerHTML = `
+          <div class="mono">${project}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(tokens / maxTokens) * 100}%"></div></div>
+          <div class="mono">${fmtInt(tokens)}</div>
+        `;
+        projectBars.appendChild(row);
+      }
+
+      const sessionsBody = document.getElementById('sessionsBody');
+      sessionsBody.innerHTML = '';
+      for (const row of limited) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${row.date || ''}</td>
+          <td>${row.project}</td>
+          <td><span class="pill">${row.source || 'unknown'}</span></td>
+          <td class="mono">${fmtInt(row.total_tokens)}</td>
+          <td class="mono">${fmt1(row.composite)}</td>
+          <td class="mono">${fmtInt(row.tool_calls)}</td>
+          <td class="mono">${fmtInt(row.retry_loops)}</td>
+          <td class="mono">${row.session_reference_id || row.session_id || ''}</td>
+        `;
+        sessionsBody.appendChild(tr);
+      }
+
+      const recRows = [];
+      for (const row of picked) {
+        const rec = (row.report && row.report.recommendations && row.report.recommendations[0]) || null;
+        if (!rec || !rec.action) continue;
+        recRows.push({
+          date: row.date || '',
+          project: row.project,
+          source: row.source || '',
+          action: rec.action,
+          impact: rec.expected_impact || '',
+          sort_key: row.sort_key
+        });
+      }
+      recRows.sort((a, b) => a.sort_key < b.sort_key ? 1 : -1);
+      const recsBody = document.getElementById('recsBody');
+      recsBody.innerHTML = '';
+      for (const rec of recRows.slice(0, 20)) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${rec.date}</td>
+          <td>${rec.project}</td>
+          <td><span class="pill">${rec.source}</span></td>
+          <td>${rec.action}</td>
+          <td class="mono">${rec.impact}</td>
+        `;
+        recsBody.appendChild(tr);
+      }
+    }
+
+    projectFilter.addEventListener('change', render);
+    sourceFilter.addEventListener('change', render);
+    minComposite.addEventListener('input', render);
+    rowLimit.addEventListener('change', render);
+    render();
+  </script>
+</body>
+</html>
