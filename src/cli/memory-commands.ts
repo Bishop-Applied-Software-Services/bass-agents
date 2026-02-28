@@ -4,7 +4,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { MemoryAdapter } from '../memory/memory-adapter';
-import { MemoryQueryFilters } from '../memory/types';
+import {
+  EvidenceReference,
+  MemoryEntryInput,
+  MemoryProvenance,
+  MemoryProvenanceSource,
+  MemoryQueryFilters,
+} from '../memory/types';
 import {
   assertPathWithinProject,
   loadProjectContext,
@@ -12,15 +18,17 @@ import {
   ResolvedProjectContext,
 } from '../project-context';
 
+type OptionValue = string | boolean | string[];
+
 interface ParsedArgs {
   command: string;
   args: string[];
-  options: Record<string, string | boolean>;
+  options: Record<string, OptionValue>;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
   const args: string[] = [];
-  const options: Record<string, string | boolean> = {};
+  const options: Record<string, OptionValue> = {};
   let command = '';
 
   for (let i = 0; i < argv.length; i++) {
@@ -30,7 +38,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       const optionName = arg.slice(2);
       const nextArg = argv[i + 1];
       if (nextArg && !nextArg.startsWith('-')) {
-        options[optionName] = nextArg;
+        appendOption(options, optionName, nextArg);
         i++;
       } else {
         options[optionName] = true;
@@ -53,8 +61,33 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { command, args, options };
 }
 
+function appendOption(
+  options: Record<string, OptionValue>,
+  optionName: string,
+  value: string
+): void {
+  const existing = options[optionName];
+
+  if (existing === undefined || existing === true) {
+    options[optionName] = value;
+    return;
+  }
+
+  if (typeof existing === 'string') {
+    options[optionName] = [existing, value];
+    return;
+  }
+
+  if (!Array.isArray(existing)) {
+    options[optionName] = value;
+    return;
+  }
+
+  existing.push(value);
+}
+
 function getProjectContext(parsed: ParsedArgs): ResolvedProjectContext {
-  const projectRoot = resolveProjectRoot(parsed.options.project as string | undefined);
+  const projectRoot = resolveProjectRoot(getOptionString(parsed, 'project'));
   return loadProjectContext(projectRoot);
 }
 
@@ -132,26 +165,262 @@ function parseDateRange(
 function buildFilters(parsed: ParsedArgs): MemoryQueryFilters {
   const filters: MemoryQueryFilters = {};
 
-  if (parsed.options.section) {
-    filters.section = [parsed.options.section as string];
+  const section = getOptionString(parsed, 'section');
+  if (section) {
+    filters.section = [section];
   }
-  if (parsed.options.kind) {
-    filters.kind = [parsed.options.kind as string];
+  const kind = getOptionString(parsed, 'kind');
+  if (kind) {
+    filters.kind = [kind];
   }
-  if (parsed.options.scope) {
-    filters.scope = [parsed.options.scope as string];
+  const scope = getOptionString(parsed, 'scope');
+  if (scope) {
+    filters.scope = [scope];
   }
-  if (parsed.options.subject) {
-    filters.subject = [parsed.options.subject as string];
+  const subject = getOptionString(parsed, 'subject');
+  if (subject) {
+    filters.subject = [subject];
   }
-  if (parsed.options.status) {
-    filters.status = [parsed.options.status as string];
+  const status = getOptionString(parsed, 'status');
+  if (status) {
+    filters.status = [status];
   }
-  if (parsed.options['min-confidence']) {
-    filters.minConfidence = parseFloat(parsed.options['min-confidence'] as string);
+  const minConfidence = getOptionString(parsed, 'min-confidence');
+  if (minConfidence) {
+    filters.minConfidence = parseFloat(minConfidence);
   }
 
   return filters;
+}
+
+function getOptionString(parsed: ParsedArgs, optionName: string): string | undefined {
+  const value = parsed.options[optionName];
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const lastValue = value.at(-1);
+    return typeof lastValue === 'string' ? lastValue : undefined;
+  }
+  return undefined;
+}
+
+function getOptionStrings(parsed: ParsedArgs, optionName: string): string[] {
+  const value = parsed.options[optionName];
+  if (typeof value === 'string') {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === 'string');
+  }
+  return [];
+}
+
+function getCommandArgs(parsed: ParsedArgs, context: ResolvedProjectContext): string[] {
+  if (getOptionString(parsed, 'project')) {
+    return parsed.args;
+  }
+
+  const [firstArg, ...rest] = parsed.args;
+  if (!firstArg) {
+    return parsed.args;
+  }
+
+  return firstArg === context.projectName ? rest : parsed.args;
+}
+
+function parseCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map(entry => entry.trim())
+    .filter(Boolean);
+}
+
+function readListOption(
+  parsed: ParsedArgs,
+  csvOptionName: string,
+  repeatedOptionName: string
+): string[] {
+  return [
+    ...getOptionStrings(parsed, csvOptionName).flatMap(parseCsv),
+    ...getOptionStrings(parsed, repeatedOptionName),
+  ].map(entry => entry.trim()).filter(Boolean);
+}
+
+function parseConfidence(parsed: ParsedArgs): number {
+  const rawConfidence = getOptionString(parsed, 'confidence');
+  if (!rawConfidence) {
+    throw new Error('Missing required option: --confidence');
+  }
+
+  const confidence = Number(rawConfidence);
+  if (!Number.isFinite(confidence)) {
+    throw new Error(`Invalid confidence value: ${rawConfidence}`);
+  }
+
+  return confidence;
+}
+
+function parseEvidenceEntry(rawValue: string): EvidenceReference {
+  const [type, uri, ...noteParts] = rawValue.split('|');
+  const note = noteParts.join('|').trim();
+
+  if (!type || !uri || !note) {
+    throw new Error(
+      'Invalid --evidence value. Expected format: <type>|<uri>|<note>'
+    );
+  }
+
+  return {
+    type: type.trim() as EvidenceReference['type'],
+    uri: uri.trim(),
+    note,
+  };
+}
+
+function parseEvidenceJson(rawValue: string): EvidenceReference[] {
+  let parsedValue: unknown;
+  try {
+    parsedValue = JSON.parse(rawValue);
+  } catch (error) {
+    throw new Error(
+      `Invalid --evidence-json value: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  if (Array.isArray(parsedValue)) {
+    return parsedValue as EvidenceReference[];
+  }
+
+  if (parsedValue && typeof parsedValue === 'object') {
+    return [parsedValue as EvidenceReference];
+  }
+
+  throw new Error('--evidence-json must be a JSON object or array');
+}
+
+function parseEvidence(parsed: ParsedArgs): EvidenceReference[] {
+  const evidence = [
+    ...getOptionStrings(parsed, 'evidence-json').flatMap(parseEvidenceJson),
+    ...getOptionStrings(parsed, 'evidence').map(parseEvidenceEntry),
+  ];
+
+  const evidenceType = getOptionString(parsed, 'evidence-type');
+  const evidenceUri = getOptionString(parsed, 'evidence-uri');
+  const evidenceNote = getOptionString(parsed, 'evidence-note');
+  if (evidenceType || evidenceUri || evidenceNote) {
+    if (!evidenceType || !evidenceUri || !evidenceNote) {
+      throw new Error(
+        'Single evidence flags require --evidence-type, --evidence-uri, and --evidence-note'
+      );
+    }
+
+    evidence.push({
+      type: evidenceType as EvidenceReference['type'],
+      uri: evidenceUri,
+      note: evidenceNote,
+    });
+  }
+
+  if (evidence.length === 0) {
+    throw new Error(
+      'At least one evidence reference is required. Use --evidence, --evidence-json, or --evidence-type/--evidence-uri/--evidence-note'
+    );
+  }
+
+  return evidence;
+}
+
+function parseProvenance(parsed: ParsedArgs): MemoryProvenance | undefined {
+  const sourceType = getOptionString(parsed, 'provenance-source-type');
+  const sourceRef = getOptionString(parsed, 'provenance-source-ref');
+  const note = getOptionString(parsed, 'provenance-note');
+
+  if (!sourceType && !sourceRef && !note) {
+    return undefined;
+  }
+
+  const provenance: MemoryProvenance = {
+    source_type: (sourceType || 'manual') as MemoryProvenanceSource,
+  };
+
+  if (sourceRef) {
+    provenance.source_ref = sourceRef;
+  }
+  if (note) {
+    provenance.note = note;
+  }
+
+  return provenance;
+}
+
+function buildMemoryEntryInput(parsed: ParsedArgs): MemoryEntryInput {
+  const section = getOptionString(parsed, 'section');
+  const kind = getOptionString(parsed, 'kind');
+  const subject = getOptionString(parsed, 'subject');
+  const scope = getOptionString(parsed, 'scope');
+  const summary = getOptionString(parsed, 'summary');
+  const content = getOptionString(parsed, 'content');
+
+  if (!section) {
+    throw new Error('Missing required option: --section');
+  }
+  if (!kind) {
+    throw new Error('Missing required option: --kind');
+  }
+  if (!subject) {
+    throw new Error('Missing required option: --subject');
+  }
+  if (!scope) {
+    throw new Error('Missing required option: --scope');
+  }
+  if (!summary) {
+    throw new Error('Missing required option: --summary');
+  }
+  if (!content) {
+    throw new Error('Missing required option: --content');
+  }
+
+  const entry: MemoryEntryInput = {
+    section: section as MemoryEntryInput['section'],
+    kind: kind as MemoryEntryInput['kind'],
+    subject,
+    scope,
+    summary,
+    content,
+    confidence: parseConfidence(parsed),
+    evidence: parseEvidence(parsed),
+    created_by: getOptionString(parsed, 'created-by') || process.env.USER || 'unknown',
+  };
+
+  const tags = readListOption(parsed, 'tags', 'tag');
+  if (tags.length > 0) {
+    entry.tags = tags;
+  }
+
+  const relatedEntries = readListOption(parsed, 'related-entries', 'related-entry');
+  if (relatedEntries.length > 0) {
+    entry.related_entries = relatedEntries;
+  }
+
+  const status = getOptionString(parsed, 'status');
+  if (status) {
+    entry.status = status as MemoryEntryInput['status'];
+  }
+
+  const supersededBy = getOptionString(parsed, 'superseded-by');
+  if (supersededBy) {
+    entry.superseded_by = supersededBy;
+  }
+
+  const provenance = parseProvenance(parsed);
+  if (provenance) {
+    entry.provenance = provenance;
+  }
+
+  return entry;
 }
 
 function ensureNoAllOption(parsed: ParsedArgs): void {
@@ -168,9 +437,12 @@ Usage:
   bass-agents memory <command> [options]
 
 Commands:
+  init                            Initialize durable memory for the current project
   list                            List memory entries in the current project
   show <entry-id>                 Show full entry details
   query <text>                    Search memory content
+  create                          Create a memory entry
+  supersede <entry-id>            Supersede an existing entry
   compact                         Trigger local memory consolidation
   validate-evidence               Check local evidence references
   check-freshness                 List entries approaching expiry
@@ -188,6 +460,23 @@ Options:
   --subject <subject>             Filter by subject
   --status <status>               Filter by status
   --min-confidence <value>        Minimum confidence filter
+  --summary <text>                Entry summary for create/supersede
+  --content <text>                Entry content for create/supersede
+  --confidence <value>            Entry confidence for create/supersede
+  --created-by <name>             Entry creator (default: current user)
+  --tags <csv>                    Comma-separated tags
+  --tag <tag>                     Repeatable tag
+  --related-entries <csv>         Comma-separated related entry IDs
+  --related-entry <id>            Repeatable related entry ID
+  --evidence <type|uri|note>      Repeatable evidence reference
+  --evidence-json <json>          Evidence object or array as JSON
+  --evidence-type <type>          Single evidence type
+  --evidence-uri <uri>            Single evidence URI
+  --evidence-note <note>          Single evidence note
+  --provenance-source-type <type> Entry provenance source type
+  --provenance-source-ref <ref>   Entry provenance source reference
+  --provenance-note <note>        Entry provenance note
+  --superseded-by <id>            Optional superseding entry ID
   --dry-run                       Preview compaction only
   --conflict-strategy <strategy>  Import strategy: skip|overwrite|merge
   --range <7d|30d|all>            Stats/dashboard date range
@@ -197,8 +486,11 @@ Options:
   --json                          Output stats as JSON
 
 Examples:
+  bass-agents memory init
   bass-agents memory list
   bass-agents memory query "authentication" --section decisions
+  bass-agents memory create --section decisions --kind decision --subject "auth.jwt" --scope repo --summary "Use JWT" --content "JWT is the chosen auth mechanism." --confidence 0.9 --evidence "doc|README.md|Architecture notes"
+  bass-agents memory supersede bass-agents-123 --section decisions --kind decision --subject "auth.jwt" --scope repo --summary "Use OAuth2" --content "OAuth2 replaces JWT-only auth." --confidence 0.92 --evidence "doc|README.md|Updated architecture notes"
   bass-agents memory export ./backup.jsonl
   bass-agents memory import ./backup.jsonl --conflict-strategy merge
   bass-agents memory dashboard --web
@@ -212,6 +504,10 @@ export async function main(argv: string[]): Promise<void> {
 
   try {
     switch (parsed.command) {
+      case 'init':
+        ensureNoAllOption(parsed);
+        await handleInit(adapter, context, parsed);
+        return;
       case 'list':
         ensureNoAllOption(parsed);
         requireLocalMemory(context);
@@ -225,7 +521,15 @@ export async function main(argv: string[]): Promise<void> {
       case 'query':
         ensureNoAllOption(parsed);
         requireLocalMemory(context);
-        await handleQuery(adapter, parsed);
+        await handleQuery(adapter, context, parsed);
+        return;
+      case 'create':
+        ensureNoAllOption(parsed);
+        await handleCreate(adapter, context, parsed);
+        return;
+      case 'supersede':
+        ensureNoAllOption(parsed);
+        await handleSupersede(adapter, context, parsed);
         return;
       case 'compact':
         ensureNoAllOption(parsed);
@@ -275,6 +579,20 @@ export async function main(argv: string[]): Promise<void> {
     console.error('Error:', error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
+}
+
+async function handleInit(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const args = getCommandArgs(parsed, context);
+  if (args.length > 0) {
+    throw new Error('Usage: bass-agents memory init');
+  }
+
+  await adapter.init();
+  console.log(`Initialized durable memory at ${context.memoryRoot}`);
 }
 
 async function handleList(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
@@ -345,8 +663,12 @@ async function handleShow(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<v
   }
 }
 
-async function handleQuery(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  const searchText = parsed.args.join(' ').trim();
+async function handleQuery(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const searchText = getCommandArgs(parsed, context).join(' ').trim();
   if (!searchText) {
     throw new Error('Usage: bass-agents memory query <text>');
   }
@@ -367,6 +689,35 @@ async function handleQuery(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<
 
   console.log(formatTable(['ID', 'Section', 'Subject', 'Conf', 'Summary'], rows));
   console.log(`\nFound: ${matchingEntries.length} matching entries`);
+}
+
+async function handleCreate(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const args = getCommandArgs(parsed, context);
+  if (args.length > 0) {
+    throw new Error('Usage: bass-agents memory create --section <section> --kind <kind> --subject <subject> --scope <scope> --summary <summary> --content <content> --confidence <value> --evidence <type|uri|note>');
+  }
+
+  const entryId = await adapter.create(buildMemoryEntryInput(parsed));
+  console.log(`Created memory entry ${entryId}`);
+}
+
+async function handleSupersede(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const args = getCommandArgs(parsed, context);
+  const targetId = getOptionString(parsed, 'target-id') || args[0];
+  if (!targetId || args.length > 1) {
+    throw new Error('Usage: bass-agents memory supersede <entry-id> --section <section> --kind <kind> --subject <subject> --scope <scope> --summary <summary> --content <content> --confidence <value> --evidence <type|uri|note>');
+  }
+
+  const replacementId = await adapter.supersede(targetId, buildMemoryEntryInput(parsed));
+  console.log(`Superseded ${targetId} with ${replacementId}`);
 }
 
 async function handleCompact(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
