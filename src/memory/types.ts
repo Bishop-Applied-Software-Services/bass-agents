@@ -15,6 +15,25 @@ export interface EvidenceReference {
 }
 
 /**
+ * Provenance for a memory entry so write paths remain distinguishable.
+ */
+export type MemoryProvenanceSource =
+  | 'field_note'
+  | 'agent_result'
+  | 'manual'
+  | 'import'
+  | 'validation'
+  | 'compaction'
+  | 'system'
+  | 'other';
+
+export interface MemoryProvenance {
+  source_type: MemoryProvenanceSource;
+  source_ref?: string;
+  note?: string;
+}
+
+/**
  * Memory entry representing a single unit of stored knowledge
  */
 export interface MemoryEntry {
@@ -28,6 +47,7 @@ export interface MemoryEntry {
   tags: string[];
   confidence: number;
   evidence: EvidenceReference[];
+  provenance: MemoryProvenance;
   status: 'active' | 'superseded' | 'deprecated' | 'draft';
   superseded_by: string | null;
   related_entries: string[];
@@ -49,6 +69,7 @@ export interface MemoryEntryInput {
   tags?: string[];
   confidence: number;
   evidence: EvidenceReference[];
+  provenance?: MemoryProvenance;
   status?: 'active' | 'superseded' | 'deprecated' | 'draft';
   superseded_by?: string | null;
   related_entries?: string[];

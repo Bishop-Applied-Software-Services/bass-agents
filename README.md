@@ -74,8 +74,8 @@ Each `.agent` file is a self-contained markdown document with a standard structu
 
 All agents share a universal I/O contract:
 
-- **AgentTask** (input) — `task_id`, `project`, `goal`, `definition_of_done`, plus optional `context` and `limits`. See [`schemas/agent-task.schema.json`](schemas/agent-task.schema.json).
-- **AgentResult** (output) — `task_id`, `status`, `summary`, `findings`, plus optional `next_actions` and `artifacts_produced`. See [`schemas/agent-result.schema.json`](schemas/agent-result.schema.json).
+- **AgentTask** (input) — `task_id`, `project`, `goal`, `definition_of_done`, plus optional `context`, `limits`, `memory_enabled`, and `memory_context`. See [`schemas/agent-task.schema.json`](schemas/agent-task.schema.json).
+- **AgentResult** (output) — `task_id`, `status`, `summary`, `findings`, plus optional `next_actions`, `artifacts_produced`, and `memory_updates`. See [`schemas/agent-result.schema.json`](schemas/agent-result.schema.json).
 
 This contract enables agents to hand off work to each other without custom integration.
 
@@ -96,6 +96,8 @@ The `field-notes/` directory captures deployment learnings — what worked, what
 - One folder per project (e.g. `field-notes/acme-app/`)
 - One file per session or learning (e.g. `2026-02-15-initial-pipeline-run.md`)
 - Use [`field-notes/TEMPLATE.md`](field-notes/TEMPLATE.md) as a starting point for each entry
+
+Field notes are the human-facing session record and an important durable-memory ingestion source. Durable memory can also be updated directly through other valid, evidence-backed flows such as `AgentResult.memory_updates`, imports, validation, compaction, and manual/admin maintenance.
 
 ## Session Review (MVP)
 
@@ -187,6 +189,12 @@ To measure whether `bass-agents` improves outcomes versus baseline tool usage:
 ## Durable Memory System
 
 The durable memory system provides persistent knowledge storage for agents using Beads as the storage layer.
+
+Field notes and durable memory serve different roles:
+
+- Field notes capture session-level narrative for humans.
+- Durable memory stores structured, queryable knowledge for agents.
+- Field notes are an important memory ingestion source, but a new field note is not required for every valid memory update.
 
 ### Requirements
 

@@ -72,6 +72,8 @@ describe('AgentResult Integration', () => {
       expect(entries).toHaveLength(1);
       expect(entries[0].subject).toBe('test-subject');
       expect(entries[0].created_by).toBe('test-agent');
+      expect(entries[0].provenance.source_type).toBe('agent_result');
+      expect(entries[0].provenance.source_ref).toBe('task:task-001');
     });
 
     it('should auto-initialize memory on first write', async () => {

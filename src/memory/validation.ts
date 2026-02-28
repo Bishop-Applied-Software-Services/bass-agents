@@ -39,6 +39,16 @@ const VALID_KINDS = [
  * Valid values for status field
  */
 const VALID_STATUSES = ['active', 'superseded', 'deprecated', 'draft'] as const;
+const VALID_PROVENANCE_SOURCES = [
+  'field_note',
+  'agent_result',
+  'manual',
+  'import',
+  'validation',
+  'compaction',
+  'system',
+  'other'
+] as const;
 
 /**
  * Scope pattern regex: repo | service:<name> | org | customer | environment:<prod|staging>
@@ -105,6 +115,9 @@ export function validateMemoryEntry(entry: MemoryEntryInput): ValidationResult {
   if (!entry.evidence) {
     errors.push('Field "evidence" is required');
   }
+  if (!entry.provenance) {
+    errors.push('Field "provenance" is required');
+  }
 
   // Validate section enum
   if (entry.section && !VALID_SECTIONS.includes(entry.section)) {
@@ -162,6 +175,24 @@ export function validateMemoryEntry(entry: MemoryEntryInput): ValidationResult {
         const evidenceErrors = validateEvidence(evidence, index);
         errors.push(...evidenceErrors);
       });
+    }
+  }
+
+  // Validate provenance
+  if (entry.provenance) {
+    if (!entry.provenance.source_type) {
+      errors.push('Field "provenance.source_type" is required');
+    } else if (!VALID_PROVENANCE_SOURCES.includes(entry.provenance.source_type)) {
+      errors.push(
+        `Field "provenance.source_type" must be one of: ${VALID_PROVENANCE_SOURCES.join(', ')}. Got: "${entry.provenance.source_type}"`
+      );
+    }
+
+    if (
+      entry.provenance.source_type === 'field_note' &&
+      !entry.provenance.source_ref
+    ) {
+      errors.push('Field "provenance.source_ref" is required when source_type is "field_note"');
     }
   }
 

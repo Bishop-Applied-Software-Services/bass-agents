@@ -18,6 +18,7 @@ describe('Statistics', () => {
     tags: [],
     confidence: 0.8,
     evidence: [{ type: 'code', uri: 'test.ts', note: 'test' }],
+    provenance: { source_type: 'manual' },
     status: 'active',
     superseded_by: null,
     related_entries: [],

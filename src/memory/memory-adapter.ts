@@ -14,6 +14,7 @@ import { execFileSync, execSync } from 'child_process';
 import { 
   MemoryEntry, 
   MemoryEntryInput, 
+  MemoryProvenance,
   MemoryQueryFilters, 
   CompactionReport, 
   FreshnessReport, 
@@ -134,9 +135,12 @@ export class MemoryAdapter {
    */
   async create(project: string, entry: MemoryEntryInput): Promise<string> {
     const startTime = Date.now();
+    const normalizedEntry = this.withDefaultProvenance(entry, {
+      source_type: 'manual',
+    });
     
     // Validate entry
-    const validationResult = validateMemoryEntry(entry);
+    const validationResult = validateMemoryEntry(normalizedEntry);
     if (!validationResult.valid) {
       throw new Error(
         `Memory entry validation failed:\n${validationResult.errors.join('\n')}`
@@ -144,7 +148,7 @@ export class MemoryAdapter {
     }
 
     // Check for secrets
-    const secretResult = detectSecrets(entry);
+    const secretResult = detectSecrets(normalizedEntry);
     if (secretResult.hasSecrets) {
       throw new Error(
         `Secret detection failed:\n${secretResult.errors.join('\n')}`
@@ -161,9 +165,9 @@ export class MemoryAdapter {
       const existingEntry = this.beadsIssueToMemoryEntry(existingIssue);
       
       if (
-        existingEntry.subject === entry.subject &&
-        existingEntry.scope === entry.scope &&
-        existingEntry.summary === entry.summary
+        existingEntry.subject === normalizedEntry.subject &&
+        existingEntry.scope === normalizedEntry.scope &&
+        existingEntry.summary === normalizedEntry.summary
       ) {
         throw new Error(
           `Duplicate entry detected: An entry with the same subject, scope, and summary already exists (ID: ${existingEntry.id})`
@@ -172,38 +176,39 @@ export class MemoryAdapter {
     }
 
     // Set default status if not provided
-    const status = entry.status || 'active';
-    const tags = entry.tags || [];
-    const related_entries = entry.related_entries || [];
-    const superseded_by = entry.superseded_by || null;
+    const status = normalizedEntry.status || 'active';
+    const tags = normalizedEntry.tags || [];
+    const related_entries = normalizedEntry.related_entries || [];
+    const superseded_by = normalizedEntry.superseded_by || null;
 
     // Build labels
     const labels = [
-      `section:${entry.section}`,
-      `kind:${entry.kind}`,
-      `scope:${entry.scope}`,
+      `section:${normalizedEntry.section}`,
+      `kind:${normalizedEntry.kind}`,
+      `scope:${normalizedEntry.scope}`,
       `status:${status}`,
       ...tags.map(tag => `tag:${tag}`)
     ];
 
     // Build body with metadata
     const metadata = {
-      subject: entry.subject,
-      confidence: entry.confidence,
-      evidence: entry.evidence,
+      subject: normalizedEntry.subject,
+      confidence: normalizedEntry.confidence,
+      evidence: normalizedEntry.evidence,
+      provenance: normalizedEntry.provenance,
       superseded_by,
       related_entries,
-      created_by: entry.created_by
+      created_by: normalizedEntry.created_by
     };
 
-    const body = `${entry.content}\n\n---METADATA---\n${JSON.stringify(metadata, null, 2)}`;
+    const body = `${normalizedEntry.content}\n\n---METADATA---\n${JSON.stringify(metadata, null, 2)}`;
 
     try {
       const output = this.runBdCommand(
         [
           'create',
           '--title',
-          entry.summary,
+          normalizedEntry.summary,
           '--description',
           body,
           '--labels',
@@ -218,7 +223,7 @@ export class MemoryAdapter {
       
       // Log concurrent write attempt for debugging (Requirement 12.4)
       // Beads hash-based IDs provide conflict-free creates (Requirement 12.1, 12.2)
-      this.logConcurrentWrite('create', project, issueId, entry.created_by, duration);
+      this.logConcurrentWrite('create', project, issueId, normalizedEntry.created_by, duration);
       
       // Invalidate statistics cache after write (Requirement 22.9)
       statisticsCache.invalidate(project);
@@ -232,13 +237,13 @@ export class MemoryAdapter {
 
       // Fallback for environments where Beads DB mode is unavailable.
       const issueId = await this.createIssueJsonlFallback(memoryPath, project, {
-        title: entry.summary,
+        title: normalizedEntry.summary,
         body,
         labels,
-        created_by: entry.created_by,
+        created_by: normalizedEntry.created_by,
       });
       const duration = Date.now() - startTime;
-      this.logConcurrentWrite('create', project, issueId, entry.created_by, duration);
+      this.logConcurrentWrite('create', project, issueId, normalizedEntry.created_by, duration);
       statisticsCache.invalidate(project);
       return issueId;
     }
@@ -681,6 +686,9 @@ export class MemoryAdapter {
       subject: '',
       confidence: 0.5,
       evidence: [],
+      provenance: {
+        source_type: 'other',
+      },
       superseded_by: null,
       related_entries: [],
       created_by: issue.created_by
@@ -709,6 +717,7 @@ export class MemoryAdapter {
       tags,
       confidence: metadata.confidence || 0.5,
       evidence: Array.isArray(metadata.evidence) ? metadata.evidence : [],
+      provenance: metadata.provenance || { source_type: 'other' },
       status,
       superseded_by: metadata.superseded_by || null,
       related_entries: Array.isArray(metadata.related_entries) ? metadata.related_entries : [],
@@ -955,6 +964,7 @@ export class MemoryAdapter {
       content: '',
       tags: [],
       evidence: [],
+      provenance: entry.provenance,
       status: entry.status,
       superseded_by: null,
       related_entries: [],
@@ -1147,7 +1157,9 @@ export class MemoryAdapter {
     for (let i = 0; i < lines.length; i++) {
       const lineNumber = i + 1;
       try {
-        const entry = JSON.parse(lines[i]) as MemoryEntry;
+        const entry = this.withEntryProvenance(JSON.parse(lines[i]) as MemoryEntry, {
+          source_type: 'import',
+        });
 
         // Check if entry already exists
         const existing = await this.get(project, entry.id);
@@ -1192,6 +1204,9 @@ export class MemoryAdapter {
             tags: entry.tags,
             confidence: entry.confidence,
             evidence: entry.evidence,
+            provenance: entry.provenance || {
+              source_type: 'import',
+            },
             status: entry.status,
             superseded_by: entry.superseded_by,
             related_entries: entry.related_entries,
@@ -1304,6 +1319,7 @@ export class MemoryAdapter {
       subject: entry.subject,
       confidence: entry.confidence,
       evidence: entry.evidence,
+      provenance: entry.provenance,
       superseded_by: entry.superseded_by,
       related_entries: entry.related_entries,
       created_by: entry.created_by,
@@ -1355,6 +1371,7 @@ export class MemoryAdapter {
       confidence: Math.max(existing.confidence, incoming.confidence),
       // Merge evidence arrays (deduplicate by URI)
       evidence: this.mergeEvidence(existing.evidence, incoming.evidence),
+      provenance: useIncoming ? incoming.provenance : existing.provenance,
       // Union tags
       tags: Array.from(new Set([...existing.tags, ...incoming.tags])),
       // Use most recent status
@@ -1428,6 +1445,26 @@ export class MemoryAdapter {
       throw new Error(`Failed to extract issue ID from bd create output: ${output}`);
     }
     return match[0];
+  }
+
+  private withDefaultProvenance(
+    entry: MemoryEntryInput,
+    fallback: MemoryProvenance
+  ): MemoryEntryInput {
+    return {
+      ...entry,
+      provenance: entry.provenance || fallback,
+    };
+  }
+
+  private withEntryProvenance(
+    entry: MemoryEntry,
+    fallback: MemoryProvenance
+  ): MemoryEntry {
+    return {
+      ...entry,
+      provenance: entry.provenance || fallback,
+    };
   }
 
   private shouldFallbackToJsonl(error: unknown): boolean {

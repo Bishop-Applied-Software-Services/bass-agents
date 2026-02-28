@@ -112,7 +112,7 @@
       "maxItems": 10,
       "items": {
         "type": "object",
-        "required": ["id", "section", "kind", "subject", "scope", "summary", "content", "confidence", "evidence", "status", "created_by", "created_at", "updated_at"],
+        "required": ["id", "section", "kind", "subject", "scope", "summary", "content", "confidence", "evidence", "provenance", "status", "created_by", "created_at", "updated_at"],
         "properties": {
           "id": {
             "type": "string",
@@ -182,6 +182,27 @@
               "additionalProperties": false
             },
             "description": "Supporting evidence for this memory entry."
+          },
+          "provenance": {
+            "type": "object",
+            "required": ["source_type"],
+            "properties": {
+              "source_type": {
+                "type": "string",
+                "enum": ["field_note", "agent_result", "manual", "import", "validation", "compaction", "system", "other"],
+                "description": "Write path that produced this memory entry."
+              },
+              "source_ref": {
+                "type": "string",
+                "description": "Optional stable reference to the originating artifact, task, or workflow."
+              },
+              "note": {
+                "type": "string",
+                "description": "Optional operator note clarifying how the entry was created."
+              }
+            },
+            "additionalProperties": false,
+            "description": "Provenance metadata for this memory entry."
           },
           "status": {
             "type": "string",

@@ -196,6 +196,26 @@
                 },
                 "description": "Required evidence array."
               },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "source_type": {
+                    "type": "string",
+                    "enum": ["field_note", "agent_result", "manual", "import", "validation", "compaction", "system", "other"],
+                    "description": "Write path for this memory update. If omitted in AgentResult processing, defaults to agent_result."
+                  },
+                  "source_ref": {
+                    "type": "string",
+                    "description": "Optional stable reference to the originating artifact, task, or workflow."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Optional operator note clarifying how the entry was created."
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Optional provenance metadata for the created or replacement entry."
+              },
               "status": {
                 "type": "string",
                 "enum": ["active", "superseded", "deprecated", "draft"],
