@@ -1038,7 +1038,7 @@ export class MemoryAdapter {
 
   /**
    * Ensure memory is initialized for a project.
-   * Auto-initializes if not already initialized (Requirement 9.6).
+   * Standard behavior: fail fast with setup guidance if not initialized.
    */
   private async ensureInitialized(project: string, memoryPath: string): Promise<void> {
     const configPath = path.join(memoryPath, '.config.json');
@@ -1046,8 +1046,12 @@ export class MemoryAdapter {
     try {
       await fs.promises.access(configPath, fs.constants.F_OK);
     } catch {
-      // Not initialized, auto-initialize
-      await this.init(project);
+      throw new Error(
+        `Memory project "${project}" is not initialized at ${memoryPath}.\n` +
+        `Run: bass-agents memory init ${project}\n` +
+        `Initialize Beads in the primary repo checkout with: bd init\n` +
+        `For additional working directories, use: bd worktree create <path> --branch <branch-name>`
+      );
     }
   }
 
