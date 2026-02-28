@@ -165,9 +165,14 @@ Memory dashboard flow:
 
 ```bash
 bass-agents memory dashboard bass-agents          # TUI (default)
-bass-agents memory dashboard bass-agents --web    # web HTML output
+bass-agents memory dashboard bass-agents --web    # web HTML output (Beads tickets + durable memory)
 bass-agents memory dashboard --all --web --out ai-memory/dashboard.html
 ```
+
+Notes:
+
+- `bass-agents memory dashboard --web` now renders a workspace view that combines the repo's top-level Beads tickets with durable-memory entries from `ai-memory/`.
+- TUI mode remains focused on durable-memory analytics.
 
 Unified flow (both session + memory from one command):
 
