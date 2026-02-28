@@ -2,7 +2,7 @@
 
 Portable agent definitions and agentic workflows for building great software systems.
 
-Agent definitions live in `~/.agents/` as plain `.agent` files (markdown) so they work across tools, projects, and models. This repo is the source of truth — install once, and edits here are reflected everywhere via symlinks.
+The repo source of truth is `agents/*.agent`. `bass-agents init` also exports project-local custom-agent bundles under `.bass-agents/custom-agents/`, including Claude Code-ready `AGENT.md` files, Codex multi-agent TOML config, and portable `.agent` copies for adapting into other tools.
 
 ## Directory Structure
 
@@ -46,17 +46,46 @@ npm install -g @beads/bd
 # OR: brew install beads
 # OR: go install github.com/steveyegge/beads/cmd/bd@latest
 
-# First-time setup (links CLI + agents, installs agtrace/ccusage, initializes .agtrace)
+# Initialize project-local bass-agents state and generate custom-agent exports
 ./bin/bass-agents init
 
+# Interactive init will also ask whether to install Claude/Codex custom agents now
+# (or pass --install-custom-agents / --no-install-custom-agents)
+
 # Verify
-which bass-agents
-which bassai
 which bd
-ls -la ~/.agents/
+ls -la .bass-agents/custom-agents/
 ```
 
-To use an agent, point your tool (Claude Code, Cursor, etc.) at the `.agent` file as a system prompt or context document.
+If you also want global `~/.agents/` symlinks for the portable `.agent` files, run:
+
+```bash
+./bin/bass-agents install
+```
+
+To use the generated Claude Code exports project-wide:
+
+```bash
+bass-agents install-custom-agents --tool claude --scope project
+```
+
+To use the generated Codex multi-agent exports project-wide:
+
+```bash
+bass-agents install-custom-agents --tool codex --scope project
+```
+
+This installs a `.codex/config.toml` with `multi_agent = true` plus per-role agent TOML files under `.codex/agents/`.
+
+To install both at once:
+
+```bash
+bass-agents install-custom-agents --tool all --scope project
+```
+
+You can also target user-scoped config roots with `--scope user`, which installs into `~/.claude/agents/` and `~/.codex/`.
+
+For other tools, start from `.bass-agents/custom-agents/portable/` or `.bass-agents/custom-agents/manifest.json` and adapt the prompt plus tool hints into the target tool's custom-agent format.
 
 ## Agent File Format
 

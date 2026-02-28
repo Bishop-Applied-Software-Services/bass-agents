@@ -13,6 +13,7 @@ Usage: bass-agents <command> [options]
 Commands:
   init            Initialize bass-agents state for the current project
   install         Link .agent files into ~/.agents and install CLI links
+  install-custom-agents Install generated Claude/Codex agent bundles into target config dirs
   memory          Run memory management commands
   dashboards      Unified dashboard launcher for the current project
   review          Run review-session.py
@@ -25,7 +26,18 @@ init options:
   --project <path>    Project root to initialize (default: .)
   --durable-memory    Enable project-local durable memory
   --no-durable-memory Disable project-local durable memory
+  --install-custom-agents  Install generated custom agents without prompting
+  --no-install-custom-agents Skip custom-agent installation without prompting
+  --custom-agents-tool <all|claude|codex> Install target tool (default: all)
+  --custom-agents-scope <project|user> Install scope (default: project)
   --agtrace           Initialize local .agtrace state
+
+Init also exports project-local Claude and Codex agent bundles under .bass-agents/custom-agents/.
+
+install-custom-agents options:
+  --project <path>          Source project root with generated bundles (default: .)
+  --scope <project|user>    Install into project-local or user-local config roots (default: project)
+  --tool <all|claude|codex> Install Claude bundles, Codex bundles, or both (default: all)
 
 dashboards options:
   --web               Build web dashboards (default mode)
@@ -102,6 +114,17 @@ cmd_init() {
   fi
 }
 
+cmd_install_custom_agents() {
+  if [ -f "$ROOT_DIR/src/cli/install-custom-agents-command.ts" ]; then
+    npx ts-node "$ROOT_DIR/src/cli/install-custom-agents-command.ts" "$@"
+  elif [ -f "$ROOT_DIR/dist/cli/install-custom-agents-command.js" ]; then
+    node "$ROOT_DIR/dist/cli/install-custom-agents-command.js" "$@"
+  else
+    echo "Error: install-custom-agents CLI not found (expected src/cli/install-custom-agents-command.ts or dist/cli/install-custom-agents-command.js)" >&2
+    exit 1
+  fi
+}
+
 main() {
   local cmd="${1:-help}"
   case "$cmd" in
@@ -112,6 +135,10 @@ main() {
     install)
       shift
       cmd_install "$@"
+      ;;
+    install-custom-agents)
+      shift
+      cmd_install_custom_agents "$@"
       ;;
     review)
       shift
