@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "durable_memory": {
+    "enabled": true,
+    "root": "ai-memory"
+  },
+  "session_reviews": {
+    "root": "session-reviews"
+  },
+  "agtrace": {
+    "root": ".agtrace"
+  },
+  "dashboards": {
+    "root": ".bass-agents/dashboards"
+  },
+  "ai_context": {
+    "root": "ai-context"
+  }
+}
