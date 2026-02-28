@@ -193,9 +193,9 @@ Notes:
 Memory dashboard flow:
 
 ```bash
-bass-agents memory dashboard bass-agents          # TUI (default)
-bass-agents memory dashboard bass-agents --web    # web HTML output (Beads tickets + durable memory)
-bass-agents memory dashboard --all --web --out ai-memory/dashboard.html
+bass-agents memory dashboard                      # TUI (default)
+bass-agents memory dashboard --web               # web HTML output (Beads tickets + durable memory)
+bass-agents memory dashboard --web --out .bass-agents/dashboards/memory-dashboard.html
 ```
 
 Notes:
@@ -254,6 +254,36 @@ bd --version
 ### Usage
 
 ```bash
+# Initialize project-local durable memory
+./bin/bass-agents memory init
+
+# Create a memory entry directly from the CLI
+./bin/bass-agents memory create \
+  --section learnings \
+  --kind other \
+  --subject "memory.cli" \
+  --scope repo \
+  --summary "CLI supports direct durable-memory writes" \
+  --content "Added init/create/supersede commands to support wrap-up memory capture." \
+  --confidence 0.92 \
+  --evidence "doc|README.md|README documents the write command flow" \
+  --created-by "manual"
+
+# Supersede an existing entry with updated guidance
+./bin/bass-agents memory supersede bass-agents-123 \
+  --section learnings \
+  --kind other \
+  --subject "memory.cli" \
+  --scope repo \
+  --summary "Use project-local memory write commands" \
+  --content "Project-local memory write commands replace the older workflow examples." \
+  --confidence 0.95 \
+  --evidence "doc|README.md|Updated README examples" \
+  --created-by "manual"
+
+# Query memory entries
+./bin/bass-agents memory query "wrap-up" --section learnings
+
 # Generate test data
 npx ts-node scripts/generate-test-data.ts bass-agents
 
