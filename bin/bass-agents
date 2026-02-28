@@ -11,10 +11,10 @@ usage() {
 Usage: bass-agents <command> [options]
 
 Commands:
-  init            First-time setup (deps + agtrace + agent links + CLI links)
+  init            Initialize bass-agents state for the current project
   install         Link .agent files into ~/.agents and install CLI links
   memory          Run memory management commands
-  dashboards      Unified dashboard launcher (session + workspace, web + tui)
+  dashboards      Unified dashboard launcher for the current project
   review          Run review-session.py
   run             Run run-with-bass-agents.sh
   checkpoint      Run session-review-checkpoint.sh
@@ -22,23 +22,22 @@ Commands:
   help            Show this help
 
 init options:
-  --skip-deps         Skip "npm install -g @lanegrid/agtrace ccusage"
-  --skip-agtrace      Skip "agtrace init"
-  --data-dir <path>   agtrace data dir (default: .agtrace)
-  --project <path>    agtrace project root (default: .)
+  --project <path>    Project root to initialize (default: .)
+  --durable-memory    Enable project-local durable memory
+  --no-durable-memory Disable project-local durable memory
+  --agtrace           Initialize local .agtrace state
 
 dashboards options:
   --web               Build web dashboards (default mode)
   --tui               Launch a TUI dashboard
   --session           Include session-review dashboard
-  --memory            Include workspace dashboard (tickets + durable memory in web mode)
-  --all               Memory scope: all projects (default)
-  --project <name>    Memory scope: single project
+  --memory            Include durable-memory dashboard
+  --project <path>    Project root (default: .)
 Examples:
   bass-agents dashboards
-  bass-agents dashboards --web --session --memory --project bass-agents
+  bass-agents dashboards --web --session --memory --project ../my-project
   bass-agents dashboards --tui --session
-  bass-agents dashboards --tui --memory --project bass-agents
+  bass-agents dashboards --tui --memory
 EOF
 }
 
@@ -93,57 +92,13 @@ cmd_install() {
 }
 
 cmd_init() {
-  local skip_deps="false"
-  local skip_agtrace="false"
-  local data_dir=".agtrace"
-  local project="."
-
-  while (($#)); do
-    case "$1" in
-      --skip-deps)
-        skip_deps="true"
-        shift
-        ;;
-      --skip-agtrace)
-        skip_agtrace="true"
-        shift
-        ;;
-      --data-dir)
-        data_dir="${2:-}"
-        if [ -z "$data_dir" ]; then
-          echo "Error: --data-dir requires a value" >&2
-          exit 1
-        fi
-        shift 2
-        ;;
-      --project)
-        project="${2:-}"
-        if [ -z "$project" ]; then
-          echo "Error: --project requires a value" >&2
-          exit 1
-        fi
-        shift 2
-        ;;
-      *)
-        echo "Error: unknown option for init: $1" >&2
-        usage
-        exit 1
-        ;;
-    esac
-  done
-
-  cmd_install
-
-  if [ "$skip_deps" != "true" ]; then
-    require_cmd npm
-    echo "Installing session-review dependencies via npm..."
-    npm install -g @lanegrid/agtrace ccusage
-  fi
-
-  if [ "$skip_agtrace" != "true" ]; then
-    require_cmd agtrace
-    echo "Initializing agtrace in repo-local data dir ($data_dir)..."
-    agtrace init --data-dir "$data_dir" --project "$project"
+  if [ -f "$ROOT_DIR/src/cli/init-command.ts" ]; then
+    npx ts-node "$ROOT_DIR/src/cli/init-command.ts" "$@"
+  elif [ -f "$ROOT_DIR/dist/cli/init-command.js" ]; then
+    node "$ROOT_DIR/dist/cli/init-command.js" "$@"
+  else
+    echo "Error: init CLI not found (expected src/cli/init-command.ts or dist/cli/init-command.js)" >&2
+    exit 1
   fi
 }
 
@@ -175,11 +130,13 @@ main() {
       ;;
     dashboards)
       shift
-      mode="web"
-      include_session="false"
-      include_memory="false"
-      memory_all="true"
-      memory_project=""
+      local mode="web"
+      local include_session="false"
+      local include_memory="false"
+      local project_root="."
+      local dashboards_root=""
+      local session_out=""
+      local memory_out=""
 
       while (($#)); do
         case "$1" in
@@ -199,18 +156,12 @@ main() {
             include_memory="true"
             shift
             ;;
-          --all)
-            memory_all="true"
-            memory_project=""
-            shift
-            ;;
           --project)
-            memory_project="${2:-}"
-            if [ -z "$memory_project" ]; then
+            project_root="${2:-}"
+            if [ -z "$project_root" ]; then
               echo "Error: --project requires a value" >&2
               exit 1
             fi
-            memory_all="false"
             shift 2
             ;;
           -h|--help)
@@ -230,38 +181,32 @@ main() {
         include_memory="true"
       fi
 
+      project_root="$(cd "$project_root" && pwd)"
+      dashboards_root="$project_root/.bass-agents/dashboards"
+      session_out="$dashboards_root/session-reviews.html"
+      memory_out="$dashboards_root/memory-dashboard.html"
+      mkdir -p "$dashboards_root"
+
       if [ "$mode" = "web" ]; then
         if [ "$include_session" = "true" ]; then
-          "$ROOT_DIR/scripts/session-review-dashboard.py"
-          echo "Session review web: $ROOT_DIR/session-reviews/dashboard.html"
+          "$ROOT_DIR/scripts/session-review-dashboard.py" \
+            --root "$project_root/session-reviews" \
+            --out "$session_out"
+          echo "Session review web: $session_out"
         fi
         if [ "$include_memory" = "true" ]; then
-          if [ "$memory_all" = "true" ]; then
-            "$0" memory dashboard --all --web --out ai-memory/dashboard.html
-            echo "Workspace web (all memory projects): $ROOT_DIR/ai-memory/dashboard.html"
-          else
-            "$0" memory dashboard "$memory_project" --web
-            echo "Workspace web ($memory_project): $ROOT_DIR/ai-memory/${memory_project}-dashboard.html"
-          fi
+          "$0" memory dashboard --project "$project_root" --web --out "$memory_out"
+          echo "Durable memory web: $memory_out"
         fi
       else
-        # TUI mode launches one dashboard process at a time.
         if [ "$include_session" = "true" ] && [ "$include_memory" = "true" ]; then
           echo "TUI mode supports one dashboard at a time. Launching session-review TUI first."
-          "$ROOT_DIR/scripts/session-review-dashboard-tui.py"
-          if [ "$memory_all" = "true" ]; then
-            "$0" memory dashboard --all
-          else
-            "$0" memory dashboard "$memory_project"
-          fi
+          "$ROOT_DIR/scripts/session-review-dashboard-tui.py" --root "$project_root/session-reviews"
+          "$0" memory dashboard --project "$project_root"
         elif [ "$include_session" = "true" ]; then
-          "$ROOT_DIR/scripts/session-review-dashboard-tui.py"
+          "$ROOT_DIR/scripts/session-review-dashboard-tui.py" --root "$project_root/session-reviews"
         elif [ "$include_memory" = "true" ]; then
-          if [ "$memory_all" = "true" ]; then
-            "$0" memory dashboard --all
-          else
-            "$0" memory dashboard "$memory_project"
-          fi
+          "$0" memory dashboard --project "$project_root"
         fi
       fi
       ;;

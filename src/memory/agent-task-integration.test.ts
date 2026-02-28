@@ -134,7 +134,7 @@ describe('AgentTask Integration', () => {
         evidence: [
           {
             type: 'assumption',
-            uri: '',
+            uri: 'n/a',
             note: 'Assumption evidence',
           },
         ],

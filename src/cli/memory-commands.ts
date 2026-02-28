@@ -1,26 +1,16 @@
 #!/usr/bin/env node
 
-/**
- * CLI commands for bass-agents memory management
- * 
- * Commands:
- * - bass-agents memory init <project>
- * - bass-agents memory list [project] [options]
- * - bass-agents memory show <entry-id>
- * - bass-agents memory query <text> [options]
- * - bass-agents memory compact [project] [options]
- * - bass-agents memory validate-evidence [project]
- * - bass-agents memory check-freshness [project]
- * - bass-agents memory sync-context <project>
- * - bass-agents memory export <project> <output-path> [options]
- * - bass-agents memory import <project> <input-path> [options]
- */
-
+import * as fs from 'fs';
+import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { MemoryAdapter } from '../memory/memory-adapter';
 import { MemoryQueryFilters } from '../memory/types';
-import * as path from 'path';
-import * as fs from 'fs';
-import { execFileSync } from 'child_process';
+import {
+  assertPathWithinProject,
+  loadProjectContext,
+  resolveProjectRoot,
+  ResolvedProjectContext,
+} from '../project-context';
 
 interface ParsedArgs {
   command: string;
@@ -28,9 +18,6 @@ interface ParsedArgs {
   options: Record<string, string | boolean>;
 }
 
-/**
- * Parse command line arguments
- */
 function parseArgs(argv: string[]): ParsedArgs {
   const args: string[] = [];
   const options: Record<string, string | boolean> = {};
@@ -38,223 +25,113 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    
+
     if (arg.startsWith('--')) {
-      // Long option
-      const optName = arg.slice(2);
+      const optionName = arg.slice(2);
       const nextArg = argv[i + 1];
-      
-      if (nextArg && !nextArg.startsWith('--')) {
-        options[optName] = nextArg;
-        i++; // Skip next arg
+      if (nextArg && !nextArg.startsWith('-')) {
+        options[optionName] = nextArg;
+        i++;
       } else {
-        options[optName] = true;
+        options[optionName] = true;
       }
-    } else if (arg.startsWith('-')) {
-      // Short option (treat as boolean flag)
+      continue;
+    }
+
+    if (arg.startsWith('-')) {
       options[arg.slice(1)] = true;
+      continue;
+    }
+
+    if (!command) {
+      command = arg;
     } else {
-      // Positional argument
-      if (!command) {
-        command = arg;
-      } else {
-        args.push(arg);
-      }
+      args.push(arg);
     }
   }
 
   return { command, args, options };
 }
 
-/**
- * Get workspace root (current working directory)
- */
-function getWorkspaceRoot(): string {
-  return process.cwd();
+function getProjectContext(parsed: ParsedArgs): ResolvedProjectContext {
+  const projectRoot = resolveProjectRoot(parsed.options.project as string | undefined);
+  return loadProjectContext(projectRoot);
 }
 
-/**
- * Format table output
- */
+function requireLocalMemory(context: ResolvedProjectContext): void {
+  if (!context.initialized) {
+    throw new Error(
+      `bass-agents is not initialized for ${context.projectRoot}.\n` +
+      `Run: bass-agents init`
+    );
+  }
+
+  if (!context.durableMemoryEnabled) {
+    throw new Error(
+      `Durable memory is disabled for this project.\n` +
+      `Re-run: bass-agents init --durable-memory`
+    );
+  }
+}
+
+function createAdapter(context: ResolvedProjectContext): MemoryAdapter {
+  return new MemoryAdapter(context);
+}
+
 function formatTable(headers: string[], rows: string[][]): string {
   if (rows.length === 0) {
     return 'No entries found.';
   }
 
-  // Calculate column widths
-  const widths = headers.map((h, i) => {
-    const maxRowWidth = Math.max(...rows.map(r => (r[i] || '').length));
-    return Math.max(h.length, maxRowWidth);
+  const widths = headers.map((header, index) => {
+    const maxRowWidth = Math.max(...rows.map(row => (row[index] || '').length));
+    return Math.max(header.length, maxRowWidth);
   });
 
-  // Format header
-  const headerRow = headers.map((h, i) => h.padEnd(widths[i])).join(' | ');
-  const separator = widths.map(w => '-'.repeat(w)).join('-+-');
-
-  // Format rows
-  const formattedRows = rows.map(row =>
-    row.map((cell, i) => (cell || '').padEnd(widths[i])).join(' | ')
+  const headerRow = headers.map((header, index) => header.padEnd(widths[index])).join(' | ');
+  const separator = widths.map(width => '-'.repeat(width)).join('-+-');
+  const body = rows.map(row =>
+    row.map((cell, index) => (cell || '').padEnd(widths[index])).join(' | ')
   );
 
-  return [headerRow, separator, ...formattedRows].join('\n');
+  return [headerRow, separator, ...body].join('\n');
 }
 
-/**
- * Truncate string to max length
- */
-function truncate(str: string, maxLength: number): string {
-  if (str.length <= maxLength) {
-    return str;
-  }
-  return str.slice(0, maxLength - 3) + '...';
+function truncate(value: string, length: number): string {
+  return value.length <= length ? value : `${value.slice(0, length - 3)}...`;
 }
 
-/**
- * Format timestamp for display
- */
 function formatTimestamp(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toISOString().replace('T', ' ').slice(0, 19);
+  if (!isoString) {
+    return '';
+  }
+  return new Date(isoString).toISOString().replace('T', ' ').slice(0, 19);
 }
 
-/**
- * Main CLI handler
- */
-export async function main(argv: string[]): Promise<void> {
-  const parsed = parseArgs(argv);
-  const workspaceRoot = getWorkspaceRoot();
-  const adapter = new MemoryAdapter(workspaceRoot);
+function parseDateRange(
+  rangeOption: string
+): { start_date?: string; end_date?: string } | undefined {
+  const now = new Date();
 
-  try {
-    switch (parsed.command) {
-      case 'init':
-        await handleInit(adapter, parsed);
-        break;
-      case 'list':
-        await handleList(adapter, parsed);
-        break;
-      case 'show':
-        await handleShow(adapter, parsed);
-        break;
-      case 'query':
-        await handleQuery(adapter, parsed);
-        break;
-      case 'compact':
-        await handleCompact(adapter, parsed);
-        break;
-      case 'validate-evidence':
-        await handleValidateEvidence(adapter, parsed);
-        break;
-      case 'check-freshness':
-        await handleCheckFreshness(adapter, parsed);
-        break;
-      case 'sync-context':
-        await handleSyncContext(adapter, parsed);
-        break;
-      case 'export':
-        await handleExport(adapter, parsed);
-        break;
-      case 'import':
-        await handleImport(adapter, parsed);
-        break;
-      case 'dashboard':
-        await handleDashboard(adapter, parsed);
-        break;
-      case 'stats':
-        await handleStats(adapter, parsed);
-        break;
-      default:
-        showHelp();
-        process.exit(1);
-    }
-  } catch (error) {
-    console.error('Error:', error instanceof Error ? error.message : String(error));
-    process.exit(1);
+  switch (rangeOption) {
+    case '7d':
+      return {
+        start_date: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        end_date: now.toISOString(),
+      };
+    case '30d':
+      return {
+        start_date: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        end_date: now.toISOString(),
+      };
+    default:
+      return undefined;
   }
 }
 
-/**
- * Show help message
- */
-function showHelp(): void {
-  console.log(`
-bass-agents memory - Durable memory management for bass-agents
-
-Usage:
-  bass-agents memory <command> [options]
-
-Commands:
-  init <project>                    Initialize memory storage for a project
-  list [project]                    List memory entries
-  show <entry-id>                   Show full entry details
-  query <text>                      Search memory content
-  compact [project]                 Trigger memory consolidation
-  validate-evidence [project]       Check all evidence URIs
-  check-freshness [project]         List entries approaching expiry
-  sync-context <project>            Generate ai-context/ summaries
-  export <project> <output-path>    Export memory to file
-  import <project> <input-path>     Import memory from file
-  dashboard [project]               Display analytics dashboard
-  stats [project]                   Display statistics (programmatic access)
-
-Options:
-  --section <s>                     Filter by section (list, query)
-  --kind <k>                        Filter by kind (list, query)
-  --scope <sc>                      Filter by scope (list, query)
-  --subject <subj>                  Filter by subject (list, query)
-  --status <st>                     Filter by status (list, query)
-  --min-confidence <c>              Filter by minimum confidence (list, query, export)
-  --dry-run                         Preview changes without applying (compact)
-  --conflict-strategy <strategy>    Conflict resolution: skip|overwrite|merge (import)
-  --all                             Show all projects (dashboard)
-  --refresh <seconds>               Auto-refresh interval in seconds (dashboard, default: 30)
-  --range <7d|30d|all>              Date range filter (dashboard, stats, default: all)
-  --no-cache                        Bypass statistics cache (dashboard, stats)
-  --web                             Generate web dashboard (dashboard)
-  --out <path>                      Output path for web dashboard (dashboard --web)
-  --json                            Output JSON format (stats)
-
-Examples:
-  bass-agents memory init auth-service
-  bass-agents memory list auth-service --section decisions --min-confidence 0.7
-  bass-agents memory show bd-a1b2c3
-  bass-agents memory query "authentication" --section decisions
-  bass-agents memory compact auth-service --dry-run
-  bass-agents memory export auth-service ./backup.jsonl --min-confidence 0.8
-  bass-agents memory import auth-service ./backup.jsonl --conflict-strategy merge
-  bass-agents memory dashboard auth-service --range 7d --refresh 30
-  bass-agents memory dashboard --all --no-cache
-  bass-agents memory dashboard auth-service --web --out ai-memory/dashboard.html
-  bass-agents memory stats auth-service --range 30d
-  bass-agents memory stats --all --json
-`);
-}
-
-/**
- * Handle init command
- */
-async function handleInit(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  if (parsed.args.length === 0) {
-    throw new Error('Project name required. Usage: bass-agents memory init <project>');
-  }
-
-  const project = parsed.args[0];
-  await adapter.init(project);
-  
-  const memoryPath = path.join(getWorkspaceRoot(), 'ai-memory', project);
-  console.log(`✓ Memory initialized for project: ${project}`);
-  console.log(`  Storage path: ${memoryPath}`);
-}
-
-/**
- * Handle list command
- */
-async function handleList(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  const project = parsed.args[0] || 'global';
-  
-  // Build filters from options
+function buildFilters(parsed: ParsedArgs): MemoryQueryFilters {
   const filters: MemoryQueryFilters = {};
-  
+
   if (parsed.options.section) {
     filters.section = [parsed.options.section as string];
   }
@@ -274,15 +151,134 @@ async function handleList(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<v
     filters.minConfidence = parseFloat(parsed.options['min-confidence'] as string);
   }
 
-  const entries = await adapter.query(project, filters);
-  
-  if (entries.length === 0) {
-    console.log('No entries found.');
-    return;
-  }
+  return filters;
+}
 
-  // Format as table
-  const headers = ['ID', 'Timestamp', 'Section', 'Kind', 'Subject', 'Scope', 'Conf', 'Summary'];
+function ensureNoAllOption(parsed: ParsedArgs): void {
+  if (parsed.options.all === true) {
+    throw new Error('--all is not supported in project-local mode');
+  }
+}
+
+function showHelp(): void {
+  console.log(`
+bass-agents memory - Project-local durable memory management
+
+Usage:
+  bass-agents memory <command> [options]
+
+Commands:
+  list                            List memory entries in the current project
+  show <entry-id>                 Show full entry details
+  query <text>                    Search memory content
+  compact                         Trigger local memory consolidation
+  validate-evidence               Check local evidence references
+  check-freshness                 List entries approaching expiry
+  sync-context                    Generate ai-context/ summaries
+  export <output-path>            Export memory to JSONL
+  import <input-path>             Import memory from JSONL
+  dashboard                       Display local memory dashboard
+  stats                           Display local memory statistics
+
+Options:
+  --project <path>                Resolve a specific project root (default: cwd)
+  --section <name>                Filter by section
+  --kind <name>                   Filter by kind
+  --scope <scope>                 Filter by scope
+  --subject <subject>             Filter by subject
+  --status <status>               Filter by status
+  --min-confidence <value>        Minimum confidence filter
+  --dry-run                       Preview compaction only
+  --conflict-strategy <strategy>  Import strategy: skip|overwrite|merge
+  --range <7d|30d|all>            Stats/dashboard date range
+  --no-cache                      Bypass statistics cache
+  --web                           Generate static web dashboard
+  --out <path>                    Output path for web dashboard
+  --json                          Output stats as JSON
+
+Examples:
+  bass-agents memory list
+  bass-agents memory query "authentication" --section decisions
+  bass-agents memory export ./backup.jsonl
+  bass-agents memory import ./backup.jsonl --conflict-strategy merge
+  bass-agents memory dashboard --web
+`);
+}
+
+export async function main(argv: string[]): Promise<void> {
+  const parsed = parseArgs(argv);
+  const context = getProjectContext(parsed);
+  const adapter = createAdapter(context);
+
+  try {
+    switch (parsed.command) {
+      case 'list':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleList(adapter, parsed);
+        return;
+      case 'show':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleShow(adapter, parsed);
+        return;
+      case 'query':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleQuery(adapter, parsed);
+        return;
+      case 'compact':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleCompact(adapter, parsed);
+        return;
+      case 'validate-evidence':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleValidateEvidence(adapter);
+        return;
+      case 'check-freshness':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleCheckFreshness(adapter);
+        return;
+      case 'sync-context':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleSyncContext(adapter, context);
+        return;
+      case 'export':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleExport(adapter, context, parsed);
+        return;
+      case 'import':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleImport(adapter, context, parsed);
+        return;
+      case 'dashboard':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleDashboard(adapter, context, parsed);
+        return;
+      case 'stats':
+        ensureNoAllOption(parsed);
+        requireLocalMemory(context);
+        await handleStats(adapter, context, parsed);
+        return;
+      default:
+        showHelp();
+        process.exit(1);
+    }
+  } catch (error) {
+    console.error('Error:', error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+async function handleList(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
+  const entries = await adapter.query(buildFilters(parsed));
   const rows = entries.map(entry => [
     entry.id,
     formatTimestamp(entry.updated_at),
@@ -291,35 +287,29 @@ async function handleList(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<v
     entry.subject,
     entry.scope,
     entry.confidence.toFixed(2),
-    truncate(entry.summary, 80)
+    truncate(entry.summary, 80),
   ]);
 
-  console.log(formatTable(headers, rows));
+  console.log(
+    formatTable(
+      ['ID', 'Updated', 'Section', 'Kind', 'Subject', 'Scope', 'Conf', 'Summary'],
+      rows
+    )
+  );
   console.log(`\nTotal: ${entries.length} entries`);
 }
 
-/**
- * Handle show command
- */
 async function handleShow(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  if (parsed.args.length === 0) {
-    throw new Error('Entry ID required. Usage: bass-agents memory show <entry-id>');
+  const entryId = parsed.args[0];
+  if (!entryId) {
+    throw new Error('Usage: bass-agents memory show <entry-id>');
   }
 
-  const entryId = parsed.args[0];
-  
-  // Try to find the entry in all projects
-  // For now, we'll need to specify a project or search global
-  // This is a simplification - in production, we'd search all projects
-  const project = parsed.options.project as string || 'global';
-  
-  const entry = await adapter.get(project, entryId);
-  
+  const entry = await adapter.get(entryId);
   if (!entry) {
     throw new Error(`Entry not found: ${entryId}`);
   }
 
-  // Display full entry details
   console.log(`\nMemory Entry: ${entry.id}`);
   console.log('='.repeat(80));
   console.log(`Section:      ${entry.section}`);
@@ -330,504 +320,244 @@ async function handleShow(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<v
   console.log(`Confidence:   ${entry.confidence.toFixed(2)}`);
   console.log(`Created:      ${formatTimestamp(entry.created_at)} by ${entry.created_by}`);
   console.log(`Updated:      ${formatTimestamp(entry.updated_at)}`);
-  
-  // Note: valid_from and valid_to are not in the base MemoryEntry type
-  // They would be added for state entries if needed
-  
+
   if (entry.superseded_by) {
-    console.log(`Superseded By: ${entry.superseded_by}`);
+    console.log(`Superseded By:${entry.superseded_by}`);
   }
-  
-  console.log(`\nSummary:`);
-  console.log(entry.summary);
-  
-  console.log(`\nContent:`);
-  console.log(entry.content);
-  
+
+  console.log(`\nSummary:\n${entry.summary}`);
+  console.log(`\nContent:\n${entry.content}`);
+
   if (entry.tags.length > 0) {
     console.log(`\nTags: ${entry.tags.join(', ')}`);
   }
-  
-  console.log(`\nEvidence (${entry.evidence.length}):`);
-  entry.evidence.forEach((ev, i) => {
-    console.log(`  ${i + 1}. [${ev.type}] ${ev.uri}`);
-    console.log(`     ${ev.note}`);
-  });
-  
+
+  if (entry.evidence.length > 0) {
+    console.log(`\nEvidence (${entry.evidence.length}):`);
+    entry.evidence.forEach((evidence, index) => {
+      console.log(`  ${index + 1}. [${evidence.type}] ${evidence.uri}`);
+      console.log(`     ${evidence.note}`);
+    });
+  }
+
   if (entry.related_entries.length > 0) {
     console.log(`\nRelated Entries: ${entry.related_entries.join(', ')}`);
   }
 }
 
-/**
- * Handle query command
- */
 async function handleQuery(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  if (parsed.args.length === 0) {
-    throw new Error('Search text required. Usage: bass-agents memory query <text>');
+  const searchText = parsed.args.join(' ').trim();
+  if (!searchText) {
+    throw new Error('Usage: bass-agents memory query <text>');
   }
 
-  const searchText = parsed.args.join(' ');
-  const project = parsed.options.project as string || 'global';
-  
-  // Build filters from options
-  const filters: MemoryQueryFilters = {};
-  
-  if (parsed.options.section) {
-    filters.section = [parsed.options.section as string];
-  }
-  if (parsed.options.kind) {
-    filters.kind = [parsed.options.kind as string];
-  }
-  if (parsed.options.scope) {
-    filters.scope = [parsed.options.scope as string];
-  }
+  const entries = await adapter.query(buildFilters(parsed));
+  const matchingEntries = entries.filter(entry => {
+    const haystack = `${entry.summary}\n${entry.content}\n${entry.subject}`.toLowerCase();
+    return haystack.includes(searchText.toLowerCase());
+  });
 
-  // Get all entries matching filters
-  const entries = await adapter.query(project, filters);
-  
-  // Filter by search text (simple substring match)
-  const matchingEntries = entries.filter(entry =>
-    entry.summary.toLowerCase().includes(searchText.toLowerCase()) ||
-    entry.content.toLowerCase().includes(searchText.toLowerCase()) ||
-    entry.subject.toLowerCase().includes(searchText.toLowerCase())
-  );
-
-  if (matchingEntries.length === 0) {
-    console.log('No matching entries found.');
-    return;
-  }
-
-  // Format as table
-  const headers = ['ID', 'Section', 'Subject', 'Conf', 'Summary'];
   const rows = matchingEntries.map(entry => [
     entry.id,
     entry.section,
     entry.subject,
     entry.confidence.toFixed(2),
-    truncate(entry.summary, 60)
+    truncate(entry.summary, 72),
   ]);
 
-  console.log(formatTable(headers, rows));
+  console.log(formatTable(['ID', 'Section', 'Subject', 'Conf', 'Summary'], rows));
   console.log(`\nFound: ${matchingEntries.length} matching entries`);
 }
 
-/**
- * Handle compact command
- */
 async function handleCompact(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  const project = parsed.args[0] || 'global';
   const dryRun = parsed.options['dry-run'] === true;
+  const report = await adapter.compact(dryRun);
 
-  console.log(`${dryRun ? 'Previewing' : 'Running'} compaction for project: ${project}...`);
-  
-  const report = await adapter.compact(project, dryRun);
-  
-  console.log(`\nCompaction Report:`);
+  console.log(`Compaction Report`);
   console.log(`  Total entries: ${report.totalEntries}`);
   console.log(`  Superseded entries: ${report.supersededEntries}`);
   console.log(`  Entries compacted: ${report.compactedCount}`);
-  
   if (report.output) {
-    console.log(`\nDetails:`);
-    console.log(report.output);
-  }
-  
-  if (dryRun) {
-    console.log(`\nThis was a dry run. Use without --dry-run to apply changes.`);
-  } else {
-    console.log(`\n✓ Compaction complete`);
+    console.log(`\n${report.output}`);
   }
 }
 
-/**
- * Handle validate-evidence command
- */
-async function handleValidateEvidence(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  const project = parsed.args[0] || 'global';
-
-  console.log(`Validating evidence URIs for project: ${project}...`);
-  
-  const report = await adapter.validateEvidence(project);
-  
-  console.log(`\nEvidence Validation Report:`);
-  console.log(`  Total entries checked: ${report.totalEntries}`);
-  console.log(`  Total evidence checked: ${report.totalEvidence}`);
-  console.log(`  Stale evidence found: ${report.staleEvidence.length}`);
-  
-  if (report.staleEvidence.length > 0) {
-    console.log(`\nStale Evidence:`);
-    report.staleEvidence.forEach(item => {
-      console.log(`  Entry: ${item.entryId}`);
-      console.log(`    URI: ${item.evidenceUri}`);
-      console.log(`    Error: ${item.error}`);
-    });
-  } else {
-    console.log(`\n✓ All evidence URIs are valid`);
-  }
-}
-
-/**
- * Handle check-freshness command
- */
-async function handleCheckFreshness(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  const project = parsed.args[0] || 'global';
-
-  console.log(`Checking freshness for project: ${project}...`);
-  
-  const report = await adapter.checkFreshness(project);
-  
-  console.log(`\nFreshness Report:`);
-  console.log(`  Entries expiring soon: ${report.expiringEntries.length}`);
-  
-  if (report.expiringEntries.length > 0) {
-    console.log(`\nExpiring Entries:`);
-    report.expiringEntries.forEach(item => {
-      console.log(`  ${item.id}: ${truncate(item.summary, 50)}`);
-      console.log(`    Expires: ${formatTimestamp(item.valid_to)}`);
-    });
-  } else {
-    console.log(`\n✓ All entries are fresh`);
-  }
-  
+async function handleValidateEvidence(adapter: MemoryAdapter): Promise<void> {
+  const report = await adapter.validateEvidence();
+  console.log(`Evidence Validation Report`);
+  console.log(`  Total entries: ${report.totalEntries}`);
+  console.log(`  Total evidence: ${report.totalEvidence}`);
+  console.log(`  Stale evidence: ${report.staleEvidence.length}`);
   if (report.message) {
     console.log(`\n${report.message}`);
   }
 }
 
-/**
- * Handle sync-context command
- */
-async function handleSyncContext(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  if (parsed.args.length === 0) {
-    throw new Error('Project name required. Usage: bass-agents memory sync-context <project>');
+async function handleCheckFreshness(adapter: MemoryAdapter): Promise<void> {
+  const report = await adapter.checkFreshness();
+  console.log(`Freshness Report`);
+  console.log(`  Entries expiring soon: ${report.expiringEntries.length}`);
+  if (report.message) {
+    console.log(`\n${report.message}`);
   }
-
-  const project = parsed.args[0];
-
-  console.log(`Syncing context for project: ${project}...`);
-  
-  await adapter.syncContext(project);
-  
-  const contextPath = path.join(getWorkspaceRoot(), 'ai-context', `${project}-memory-summary.md`);
-  console.log(`\n✓ Context synced`);
-  console.log(`  Output: ${contextPath}`);
 }
 
-/**
- * Handle export command
- */
-async function handleExport(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  if (parsed.args.length < 2) {
-    throw new Error('Project and output path required. Usage: bass-agents memory export <project> <output-path>');
-  }
-
-  const project = parsed.args[0];
-  const outputPath = parsed.args[1];
-  
-  // Build filters from options
-  const filters: any = {};
-  
-  if (parsed.options.section) {
-    filters.section = [parsed.options.section as string];
-  }
-  if (parsed.options['min-confidence']) {
-    filters.minConfidence = parseFloat(parsed.options['min-confidence'] as string);
-  }
-
-  console.log(`Exporting memory for project: ${project}...`);
-  
-  await adapter.export(project, outputPath, filters);
-  
-  const stats = fs.statSync(outputPath);
-  console.log(`\n✓ Export complete`);
-  console.log(`  Output: ${outputPath}`);
-  console.log(`  Size: ${(stats.size / 1024).toFixed(2)} KB`);
+async function handleSyncContext(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext
+): Promise<void> {
+  await adapter.syncContext();
+  console.log(`Context synced to ${context.aiContextRoot}`);
 }
 
-/**
- * Handle import command
- */
-async function handleImport(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  if (parsed.args.length < 2) {
-    throw new Error('Project and input path required. Usage: bass-agents memory import <project> <input-path>');
+async function handleExport(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const outputPath = parsed.args[0];
+  if (!outputPath) {
+    throw new Error('Usage: bass-agents memory export <output-path>');
   }
 
-  const project = parsed.args[0];
-  const inputPath = parsed.args[1];
-  const conflictStrategy = (parsed.options['conflict-strategy'] as string) || 'skip';
+  const exportPath = assertPathWithinProject(
+    context.projectRoot,
+    path.isAbsolute(outputPath)
+      ? outputPath
+      : path.join(context.projectRoot, outputPath),
+    'export output'
+  );
+  await adapter.export(exportPath, buildFilters(parsed));
+  console.log(`Exported memory to ${exportPath}`);
+}
 
+async function handleImport(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const inputPath = parsed.args[0];
+  if (!inputPath) {
+    throw new Error('Usage: bass-agents memory import <input-path>');
+  }
+
+  const conflictStrategy = ((parsed.options['conflict-strategy'] as string) || 'skip') as
+    | 'skip'
+    | 'overwrite'
+    | 'merge';
   if (!['skip', 'overwrite', 'merge'].includes(conflictStrategy)) {
     throw new Error('Invalid conflict strategy. Must be: skip, overwrite, or merge');
   }
 
-  console.log(`Importing memory for project: ${project}...`);
-  console.log(`  Conflict strategy: ${conflictStrategy}`);
-  
-  const report = await adapter.import(project, inputPath, conflictStrategy as 'skip' | 'overwrite' | 'merge');
-  
-  console.log(`\nImport Report:`);
-  console.log(`  Total entries: ${report.totalEntries}`);
-  console.log(`  Successful: ${report.successCount}`);
-  console.log(`  Skipped: ${report.skipCount}`);
-  console.log(`  Errors: ${report.errorCount}`);
-  
-  if (report.conflicts.length > 0) {
-    console.log(`\nConflicts:`);
-    report.conflicts.forEach(conflict => {
-      console.log(`  - ${conflict.id}: ${conflict.resolution}`);
-    });
-  }
-  
-  if (report.errors.length > 0) {
-    console.log(`\nErrors:`);
-    report.errors.forEach(error => {
-      console.log(`  - Line ${error.line}: ${error.error}`);
-    });
-  }
-  
-  console.log(`\n✓ Import complete`);
+  const importPath = assertPathWithinProject(
+    context.projectRoot,
+    path.isAbsolute(inputPath)
+      ? inputPath
+      : path.join(context.projectRoot, inputPath),
+    'import input'
+  );
+  const report = await adapter.import(importPath, conflictStrategy);
+  console.log(JSON.stringify(report, null, 2));
 }
 
-// Run if called directly
-if (require.main === module) {
-  const args = process.argv.slice(2);
-  main(args).catch(error => {
-    console.error('Fatal error:', error);
-    process.exit(1);
-  });
-}
-
-/**
- * Handle dashboard command
- * 
- * Requirements:
- * - 21.1: Dashboard command with project filtering
- * - 21.8: Auto-refresh mechanism (30 seconds default)
- * - 21.9: Support --all flag for all projects
- * - 21.10: Support date range filtering (7d, 30d, all)
- */
-async function handleDashboard(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  const project = parsed.args[0] || 'global';
-  const showAll = parsed.options.all === true;
-  const rangeOption = (parsed.options.range as string) || 'all';
+async function handleDashboard(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const dateRange = parseDateRange((parsed.options.range as string) || 'all');
   const bypassCache = parsed.options['no-cache'] === true;
-  const webMode = parsed.options.web === true;
 
-  // Parse date range
-  const dateRange = parseDateRange(rangeOption);
-
-  if (webMode) {
-    await displayWebDashboard(project, showAll, parsed.options.out as string | undefined);
+  if (parsed.options.web === true) {
+    await displayWebDashboard(context, parsed.options.out as string | undefined);
     return;
   }
 
-  // Display dashboard with blessed UI (handles its own lifecycle)
-  await displayDashboard(adapter, project, dateRange, bypassCache, showAll);
-}
-
-/**
- * Parse date range option to StatisticsDateRange
- */
-function parseDateRange(rangeOption: string): { start_date?: string; end_date?: string } | undefined {
-  const now = new Date();
-  
-  switch (rangeOption) {
-    case '7d': {
-      const startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return {
-        start_date: startDate.toISOString(),
-        end_date: now.toISOString()
-      };
-    }
-    case '30d': {
-      const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return {
-        start_date: startDate.toISOString(),
-        end_date: now.toISOString()
-      };
-    }
-    case 'all':
-    default:
-      return undefined; // No date range filter
-  }
-}
-
-/**
- * Handle stats command
- */
-async function handleStats(adapter: MemoryAdapter, parsed: ParsedArgs): Promise<void> {
-  const project = parsed.args[0] || 'global';
-  const showAll = parsed.options.all === true;
-  const rangeOption = (parsed.options.range as string) || 'all';
-  const bypassCache = parsed.options['no-cache'] === true;
-  const jsonOutput = parsed.options.json === true;
-
-  // Parse date range
-  const dateRange = parseDateRange(rangeOption);
-
-  try {
-    // Get statistics
-    const stats = await adapter.getStatistics(project, dateRange, bypassCache);
-
-    if (jsonOutput) {
-      // Output complete JSON
-      console.log(JSON.stringify(stats, null, 2));
-    } else {
-      // Human-readable summary
-      console.log(`\nMemory Statistics for ${showAll ? 'all projects' : project}`);
-      console.log(`Date Range: ${rangeOption}`);
-      console.log('='.repeat(60));
-      
-      // Basic counts
-      console.log(`\nTotal Entries: ${stats.total_entries}`);
-      console.log(`Active Entries: ${stats.entries_by_status.active || 0}`);
-      console.log(`Average Confidence: ${stats.avg_confidence.toFixed(2)}`);
-      console.log(`Low Confidence Entries: ${stats.low_confidence_count}`);
-      console.log(`Stale Evidence: ${stats.stale_evidence_count}`);
-      
-      // Sections
-      console.log(`\nEntries by Section:`);
-      Object.entries(stats.entries_by_section)
-        .sort(([, a], [, b]) => b - a)
-        .forEach(([section, count]) => {
-          console.log(`  ${section}: ${count}`);
-        });
-      
-      // Status
-      console.log(`\nEntries by Status:`);
-      Object.entries(stats.entries_by_status)
-        .sort(([, a], [, b]) => b - a)
-        .forEach(([status, count]) => {
-          console.log(`  ${status}: ${count}`);
-        });
-      
-      // Confidence distribution
-      console.log(`\nConfidence Distribution:`);
-      const confidenceRanges = ['0.0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0'];
-      confidenceRanges.forEach(range => {
-        const count = stats.confidence_distribution[range] || 0;
-        console.log(`  ${range}: ${count}`);
-      });
-      
-      // Evidence types
-      console.log(`\nEvidence Types:`);
-      Object.entries(stats.evidence_type_distribution)
-        .sort(([, a], [, b]) => b - a)
-        .forEach(([type, count]) => {
-          console.log(`  ${type}: ${count}`);
-        });
-      
-      // Top agents
-      if (stats.most_active_agents.length > 0) {
-        console.log(`\nMost Active Agents (Top 5):`);
-        stats.most_active_agents.slice(0, 5).forEach(agent => {
-          console.log(`  ${agent.agent}: ${agent.count} entries`);
-        });
-      }
-      
-      // Lifecycle metrics
-      console.log(`\nLifecycle Metrics:`);
-      console.log(`  Superseded: ${stats.superseded_percentage.toFixed(1)}%`);
-      console.log(`  Compaction Candidates: ${stats.compaction_candidates}`);
-      console.log(`  Entries Approaching Expiry: ${stats.entries_approaching_expiry.length}`);
-      
-      // Recent operations
-      if (stats.recent_operations.length > 0) {
-        console.log(`\nRecent Operations (Last 5):`);
-        stats.recent_operations.slice(0, 5).forEach(op => {
-          const timestamp = formatTimestamp(op.timestamp);
-          const summary = truncate(op.summary, 40);
-          console.log(`  ${timestamp} | ${op.operation} | ${op.agent} | ${summary}`);
-        });
-      }
-      
-      console.log('');
-    }
-  } catch (error) {
-    throw new Error(`Failed to get statistics: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
- * Display dashboard with statistics using blessed UI
- */
-async function displayDashboard(
-  adapter: MemoryAdapter,
-  project: string,
-  dateRange: { start_date?: string; end_date?: string } | undefined,
-  bypassCache: boolean,
-  showAll: boolean
-): Promise<void> {
-  // Import dashboard UI module
   const { createDashboardUI } = require('../memory/dashboard-ui');
-  
-  try {
-    // Fetch initial statistics
-    const stats = await adapter.getStatistics(project, dateRange, bypassCache);
-    
-    // Format date range for display
-    let dateRangeStr = 'All time';
-    if (dateRange && dateRange.start_date) {
-      const start = new Date(dateRange.start_date).toISOString().split('T')[0];
-      const end = new Date(dateRange.end_date!).toISOString().split('T')[0];
-      dateRangeStr = `${start} to ${end}`;
-    }
-    
-    // Create blessed UI
-    const screen = createDashboardUI(stats, {
-      project,
-      dateRange: dateRangeStr,
-      onRefresh: async () => {
-        // Refresh with cache bypass
-        return await adapter.getStatistics(project, dateRange, true);
-      },
-      onQuit: () => {
-        console.log('\nDashboard closed.');
-      },
-    });
-    
-    // Keep process alive until user quits
-    await new Promise(() => {}); // Never resolves
-    
-  } catch (error) {
-    console.error('Error fetching dashboard data:', error instanceof Error ? error.message : String(error));
-    console.log('\nTip: Make sure the project is initialized with: bass-agents memory init <project>');
+  const stats = await adapter.getStatistics(dateRange, bypassCache);
+
+  let dateRangeLabel = 'All time';
+  if (dateRange?.start_date && dateRange.end_date) {
+    dateRangeLabel = `${dateRange.start_date.slice(0, 10)} to ${dateRange.end_date.slice(0, 10)}`;
   }
+
+  createDashboardUI(stats, {
+    project: context.projectName,
+    dateRange: dateRangeLabel,
+    onRefresh: async () => adapter.getStatistics(dateRange, true),
+    onQuit: () => {
+      console.log('\nDashboard closed.');
+    },
+  });
+
+  await new Promise(() => {});
 }
 
-/**
- * Generate static web dashboard for memory entries
- */
 async function displayWebDashboard(
-  project: string,
-  showAll: boolean,
+  context: ResolvedProjectContext,
   outPath?: string
 ): Promise<void> {
-  const workspaceRoot = getWorkspaceRoot();
-  const scriptPath = path.join(workspaceRoot, 'scripts', 'memory-dashboard-web.py');
-  const rootPath = path.join(workspaceRoot, 'ai-memory');
-  const args = [scriptPath, '--root', rootPath];
-  if (!showAll) {
-    args.push('--project', project);
-  }
+  const scriptPath = path.resolve(__dirname, '../../scripts/memory-dashboard-web.py');
+  const defaultOutputPath = path.join(context.dashboardsRoot, 'memory-dashboard.html');
+  const outputPath = outPath
+    ? assertPathWithinProject(
+        context.projectRoot,
+        path.isAbsolute(outPath) ? outPath : path.join(context.projectRoot, outPath),
+        'dashboard output'
+      )
+    : defaultOutputPath;
 
-  if (outPath) {
-    args.push('--out', path.isAbsolute(outPath) ? outPath : path.join(workspaceRoot, outPath));
-  } else if (!showAll) {
-    const projectFile = `${project}-dashboard.html`;
-    args.push('--out', path.join(rootPath, projectFile));
-  }
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-  try {
-    const output = execFileSync('python3', args, {
-      cwd: workspaceRoot,
+  const output = execFileSync(
+    'python3',
+    [
+      scriptPath,
+      '--root',
+      context.memoryRoot,
+      '--project-root',
+      context.projectRoot,
+      '--out',
+      outputPath,
+    ],
+    {
+      cwd: context.projectRoot,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    }
+  );
+
+  if (output.trim()) {
     console.log(output.trim());
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to generate web dashboard: ${message}`);
   }
+  console.log(outputPath);
+}
+
+async function handleStats(
+  adapter: MemoryAdapter,
+  context: ResolvedProjectContext,
+  parsed: ParsedArgs
+): Promise<void> {
+  const dateRange = parseDateRange((parsed.options.range as string) || 'all');
+  const bypassCache = parsed.options['no-cache'] === true;
+  const stats = await adapter.getStatistics(dateRange, bypassCache);
+
+  if (parsed.options.json === true) {
+    console.log(JSON.stringify(stats, null, 2));
+    return;
+  }
+
+  console.log(`Memory Statistics for ${context.projectName}`);
+  console.log(`Date Range: ${(parsed.options.range as string) || 'all'}`);
+  console.log('='.repeat(60));
+  console.log(`Total Entries: ${stats.total_entries}`);
+  console.log(`Active Entries: ${stats.entries_by_status.active || 0}`);
+  console.log(`Average Confidence: ${stats.avg_confidence.toFixed(2)}`);
+  console.log(`Low Confidence Entries: ${stats.low_confidence_count}`);
+  console.log(`Stale Evidence: ${stats.stale_evidence_count}`);
+  console.log(`Compaction Candidates: ${stats.compaction_candidates}`);
+}
+
+if (require.main === module) {
+  void main(process.argv.slice(2));
 }

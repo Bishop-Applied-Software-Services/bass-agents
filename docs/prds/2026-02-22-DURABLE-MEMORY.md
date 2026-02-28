@@ -48,7 +48,7 @@ Direct durable-memory updates are allowed when they are evidence-backed and poli
 - Rich metadata: confidence (0.0-1.0), evidence (code/artifact/log/ticket/doc), scope (repo/service/org/customer/environment), subject (canonical entity key), kind (decision/requirement/invariant/incident/metric/hypothesis/runbook_step)
 - Provenance metadata: source type plus optional source reference/note so field-note-derived entries remain distinguishable from direct writes
 - Lifecycle states: active, superseded, deprecated, draft
-- Workspace-relative storage at ai-memory/{project-name}/
+- Project-local storage at ai-memory/
 
 **Smart Retrieval**:
 - Default filters: status=active, confidence≥0.6
@@ -68,18 +68,18 @@ Direct durable-memory updates are allowed when they are evidence-backed and poli
 
 **CLI Commands**:
 ```bash
-bass-agents memory init <project>                    # Initialize memory storage
-bass-agents memory list [project] [filters]          # List memory entries
+bass-agents init                                     # Initialize local project memory/config
+bass-agents memory list [filters]                    # List local memory entries
 bass-agents memory show <entry-id>                   # Show full entry details
 bass-agents memory query <text> [filters]            # Search memory content
-bass-agents memory compact [project] [--dry-run]     # Consolidate old entries
-bass-agents memory validate-evidence [project]       # Check evidence URIs
-bass-agents memory check-freshness [project]         # List entries approaching expiry
-bass-agents memory sync-context <project>            # Generate ai-context/ summaries
-bass-agents memory export <project> <path> [filters] # Export to JSON
-bass-agents memory import <project> <path> [strategy] # Import from JSON
-bass-agents memory dashboard [project]               # Launch interactive analytics dashboard
-bass-agents memory stats [project]                   # Show statistics (programmatic)
+bass-agents memory compact [--dry-run]               # Consolidate old entries
+bass-agents memory validate-evidence                 # Check evidence URIs
+bass-agents memory check-freshness                   # List entries approaching expiry
+bass-agents memory sync-context                      # Generate ai-context/ summaries
+bass-agents memory export <path> [filters]           # Export to JSON
+bass-agents memory import <path> [strategy]          # Import from JSON
+bass-agents memory dashboard                         # Launch interactive analytics dashboard
+bass-agents memory stats                             # Show statistics (programmatic)
 ```
 
 **AgentTask/AgentResult Integration**:

@@ -13,23 +13,20 @@ import { MemoryEntryInput } from './types';
 describe('MemoryAdapter', () => {
   const testWorkspaceRoot = path.join(__dirname, '../../test-workspace');
   const testProject = 'test-project';
+  const testProjectName = path.basename(testWorkspaceRoot);
   let adapter: MemoryAdapter;
 
   beforeEach(async () => {
-    adapter = new MemoryAdapter(testWorkspaceRoot);
-    
-    // Clean up test workspace if it exists
-    const memoryPath = path.join(testWorkspaceRoot, 'ai-memory', testProject);
-    if (fs.existsSync(memoryPath)) {
-      await fs.promises.rm(memoryPath, { recursive: true, force: true });
+    if (fs.existsSync(testWorkspaceRoot)) {
+      await fs.promises.rm(testWorkspaceRoot, { recursive: true, force: true });
     }
+    await fs.promises.mkdir(testWorkspaceRoot, { recursive: true });
+    adapter = new MemoryAdapter(testWorkspaceRoot);
   });
 
   afterEach(async () => {
-    // Clean up test workspace
-    const memoryPath = path.join(testWorkspaceRoot, 'ai-memory');
-    if (fs.existsSync(memoryPath)) {
-      await fs.promises.rm(memoryPath, { recursive: true, force: true });
+    if (fs.existsSync(testWorkspaceRoot)) {
+      await fs.promises.rm(testWorkspaceRoot, { recursive: true, force: true });
     }
   });
 
@@ -37,11 +34,13 @@ describe('MemoryAdapter', () => {
     it('should initialize memory storage for a project', async () => {
       await adapter.init(testProject);
 
-      const memoryPath = path.join(testWorkspaceRoot, 'ai-memory', testProject);
-      const configPath = path.join(memoryPath, '.config.json');
+      const memoryPath = path.join(testWorkspaceRoot, 'ai-memory');
+      const beadsPath = path.join(memoryPath, '.beads');
+      const configPath = path.join(testWorkspaceRoot, '.bass-agents', 'config.json');
 
       // Check directory exists
       expect(fs.existsSync(memoryPath)).toBe(true);
+      expect(fs.existsSync(beadsPath)).toBe(true);
 
       // Check config file exists
       expect(fs.existsSync(configPath)).toBe(true);
@@ -49,9 +48,19 @@ describe('MemoryAdapter', () => {
       // Check config content
       const configContent = await fs.promises.readFile(configPath, 'utf-8');
       const config = JSON.parse(configContent);
-      expect(config.project).toBe(testProject);
-      expect(config.version).toBe('1.0.0');
-      expect(config.created_at).toBeDefined();
+      expect(config.version).toBe(1);
+      expect(config.durable_memory.enabled).toBe(true);
+      expect(config.durable_memory.root).toBe('ai-memory');
+    });
+  });
+
+  describe('write fallback detection', () => {
+    it('should treat Dolt-unavailable open-database errors as JSONL fallback cases', () => {
+      const error = new Error(
+        'failed to open database: Dolt server unreachable: operation not permitted'
+      );
+
+      expect((adapter as any).shouldFallbackToJsonl(error)).toBe(true);
     });
   });
 
@@ -221,6 +230,8 @@ describe('MemoryAdapter', () => {
         created_by: 'test-agent'
       };
 
+      await adapter.init(testProject);
+
       await expect(
         adapter.supersede(testProject, 'bd-nonexistent', replacementEntry)
       ).rejects.toThrow(/not found/i);
@@ -253,6 +264,8 @@ describe('MemoryAdapter', () => {
     });
 
     it('should throw error for non-existent target', async () => {
+      await adapter.init(testProject);
+
       await expect(
         adapter.deprecate(testProject, 'bd-nonexistent')
       ).rejects.toThrow(/not found/i);
@@ -533,7 +546,7 @@ describe('MemoryAdapter', () => {
       const report = await adapter.compact(testProject, true);
 
       expect(report).toBeDefined();
-      expect(report.project).toBe(testProject);
+      expect(report.project).toBe(testProjectName);
       expect(report.dryRun).toBe(true);
       expect(report.totalEntries).toBeGreaterThan(0);
       expect(report.supersededEntries).toBeGreaterThan(0);
@@ -560,7 +573,7 @@ describe('MemoryAdapter', () => {
       const report = await adapter.compact(testProject, false);
 
       expect(report).toBeDefined();
-      expect(report.project).toBe(testProject);
+      expect(report.project).toBe(testProjectName);
       expect(report.dryRun).toBe(false);
     });
   });
@@ -699,7 +712,7 @@ describe('MemoryAdapter', () => {
       const report = await adapter.import(testProject, inputPath, 'skip');
 
       expect(report).toBeDefined();
-      expect(report.project).toBe(testProject);
+      expect(report.project).toBe(testProjectName);
       expect(report.totalEntries).toBe(1);
       expect(report.successCount).toBeGreaterThan(0);
       expect(report.errorCount).toBe(0);
@@ -803,7 +816,7 @@ describe('MemoryAdapter', () => {
       await adapter.syncContext(testProject);
 
       // Verify context file was created
-      const contextDir = path.join(testWorkspaceRoot, 'ai-context', testProject);
+      const contextDir = path.join(testWorkspaceRoot, 'ai-context');
       expect(fs.existsSync(contextDir)).toBe(true);
 
       // Check for generated file
@@ -846,7 +859,7 @@ describe('MemoryAdapter', () => {
       await adapter.syncContext(testProject);
 
       // Context directory may not exist or be empty
-      const contextDir = path.join(testWorkspaceRoot, 'ai-context', testProject);
+      const contextDir = path.join(testWorkspaceRoot, 'ai-context');
       if (fs.existsSync(contextDir)) {
         const files = await fs.promises.readdir(contextDir);
         // Should not contain low-confidence entries
@@ -893,7 +906,7 @@ describe('MemoryAdapter', () => {
       await adapter.syncContext(testProject);
 
       // Verify single file for subject
-      const contextDir = path.join(testWorkspaceRoot, 'ai-context', testProject);
+      const contextDir = path.join(testWorkspaceRoot, 'ai-context');
       const files = await fs.promises.readdir(contextDir);
       
       // Should have one file for auth-service
@@ -911,15 +924,6 @@ describe('MemoryAdapter', () => {
   });
 
   describe('workspace boundary enforcement', () => {
-    it('should reject init with path outside workspace', async () => {
-      // Try to initialize with path traversal
-      const maliciousProject = '../../../etc/passwd';
-      
-      await expect(adapter.init(maliciousProject)).rejects.toThrow(
-        /workspace boundary violation/i
-      );
-    });
-
     it('should reject export with path outside workspace', async () => {
       await adapter.init(testProject);
       
@@ -938,18 +942,6 @@ describe('MemoryAdapter', () => {
       const maliciousPath = '/etc/passwd';
       
       await expect(adapter.import(testProject, maliciousPath)).rejects.toThrow(
-        /workspace boundary violation/i
-      );
-    });
-
-    it('should reject syncContext with malicious project name', async () => {
-      // Try to sync context with path traversal in project name
-      const maliciousProject = '../../../tmp/evil';
-      await adapter.init(testProject); // Initialize valid project first
-      
-      // syncContext validates the ai-context path, not the memory path
-      // So we need to test with a project that would create ai-context outside workspace
-      await expect(adapter.syncContext(maliciousProject)).rejects.toThrow(
         /workspace boundary violation/i
       );
     });
