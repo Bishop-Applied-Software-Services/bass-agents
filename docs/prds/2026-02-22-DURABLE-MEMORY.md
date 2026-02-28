@@ -6,6 +6,16 @@ Enable a production-grade durable memory solution for evolving context over time
 
 **Key Principle**: ai-context/ provides minimum stable knowledge included in every agent run. ai-memory/ provides durable-but-evolving knowledge accessed only when needed.
 
+## Relationship to Field Notes
+
+Field notes and durable memory have distinct roles:
+
+- `field-notes/` is the human-facing record of a session, deployment, or retrospective.
+- durable memory is the structured, queryable layer agents use across sessions.
+- field notes are an important ingestion source for durable memory, but they are not the only valid write path.
+
+Direct durable-memory updates are allowed when they are evidence-backed and policy-compliant. This includes updates produced from agent results, manual/admin workflows, imports, validation jobs, compaction, freshness maintenance, and lifecycle operations such as superseding or deprecating entries.
+
 ## Status
 
 ✅ **Spec Complete** - Ready for implementation
@@ -36,6 +46,7 @@ Enable a production-grade durable memory solution for evolving context over time
 **Memory Storage**:
 - Four sections: decisions, state, observations, learnings
 - Rich metadata: confidence (0.0-1.0), evidence (code/artifact/log/ticket/doc), scope (repo/service/org/customer/environment), subject (canonical entity key), kind (decision/requirement/invariant/incident/metric/hypothesis/runbook_step)
+- Provenance metadata: source type plus optional source reference/note so field-note-derived entries remain distinguishable from direct writes
 - Lifecycle states: active, superseded, deprecated, draft
 - Workspace-relative storage at ai-memory/{project-name}/
 
@@ -87,6 +98,11 @@ bass-agents memory stats [project]                   # Show statistics (programm
 - Freshness checking: warn on entries approaching expiry
 - Evidence validation: detect stale URIs, down-rank affected entries
 
+**Write Policy**:
+- A new field note is encouraged for major cross-session learnings, behavioral changes, or important retrospectives.
+- A new field note is not required for every valid memory update.
+- Implementations should preserve provenance for direct writes using evidence and operational metadata, so later readers can distinguish field-note-derived memory from other write paths.
+
 ## Out of Scope (MVP)
 
 - Semantic search / embeddings (use text search initially)
@@ -102,7 +118,7 @@ See "CLI Commands" section above.
 ## Output Contract
 
 - Memory_Entry JSON: Conforms to schema in [requirements.md](.kiro/specs/durable-memory/requirements.md)
-- Memory_Update JSON: Operations (create/supersede/deprecate)
+- Memory_Update JSON: Operations (create/supersede/deprecate) with provenance carried on created/replacement entries
 - AgentTask Extension: memory_enabled, memory_context (max 10)
 - AgentResult Extension: memory_updates array
 

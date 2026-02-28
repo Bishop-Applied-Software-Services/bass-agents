@@ -31,22 +31,25 @@ This file is the stable top-level context all bass-agents should read first on e
 - Keep outputs concise, structured, and evidence-backed.
 - When confidence is low, state assumptions explicitly.
 
-## Memory Policy (Pre-Durable-Memory)
+## Memory Policy
 
-Current state: durable memory is not yet a finalized runtime contract.
+Current state: durable-memory fields are part of the schema contract, but memory remains optional at runtime and must degrade gracefully when uninitialized.
 
 ### Do
 
 - Treat this `ai-context` folder as stable always-read context.
 - Store long-term learnings in `field-notes/` after meaningful sessions.
+- Use `AgentTask.memory_enabled` / `memory_context` only when memory is intentionally enabled and populated.
+- Use `AgentResult.memory_updates` only for evidence-backed durable-memory writes.
+- Preserve memory provenance so field-note-derived entries remain distinguishable from direct writes.
 - Reference concrete artifacts (paths, logs, diffs) in findings.
 - Keep per-run context in `AgentTask.context`.
 
 ### Do Not
 
 - Do not assume `/ai-memory` exists or is initialized.
-- Do not invent `AgentTask` fields not present in current schema (for example, `memory_context`).
-- Do not invent `AgentResult` fields not present in current schema (for example, `memory_updates`).
+- Do not invent memory fields beyond the current schema contract.
+- Do not treat field notes as the only valid write path for durable memory.
 - Do not silently persist sensitive values (API keys, tokens, passwords) in docs or notes.
 
 ## Completion Standard

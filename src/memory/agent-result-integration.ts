@@ -92,6 +92,13 @@ export async function applyMemoryUpdates(
       const entryWithAgent: MemoryEntryInput = {
         ...update.entry,
         created_by: agentIdentifier,
+        provenance: {
+          source_type: update.entry.provenance?.source_type || 'agent_result',
+          source_ref:
+            update.entry.provenance?.source_ref ||
+            `task:${result.task_id}`,
+          note: update.entry.provenance?.note,
+        },
       };
 
       // Apply the update based on operation type
@@ -207,6 +214,13 @@ function validateMemoryUpdate(update: MemoryUpdate): string | null {
     return 'entry.evidence array must contain at least one evidence object';
   }
 
+  if (
+    update.entry.provenance?.source_type === 'field_note' &&
+    !update.entry.provenance?.source_ref
+  ) {
+    return 'Missing required field: entry.provenance.source_ref for field_note provenance';
+  }
+
   // Validate evidence objects
   for (let i = 0; i < update.entry.evidence.length; i++) {
     const evidence = update.entry.evidence[i];
@@ -254,6 +268,9 @@ function validateMemoryUpdate(update: MemoryUpdate): string | null {
       content: update.entry.content,
       confidence: update.entry.confidence,
       evidence: update.entry.evidence,
+      provenance: update.entry.provenance || {
+        source_type: 'agent_result',
+      },
       tags: update.entry.tags,
       status: update.entry.status,
       related_entries: update.entry.related_entries,

@@ -20,6 +20,8 @@ We capture deployment learnings in `field-notes/` to create a feedback loop from
 
 After significant deployments, testing sessions, or when you discover something worth recording about agent behavior, suggest creating a field note.
 
+Field notes are the human-facing session record and an important ingestion source for durable memory, but they are not the only valid write path. Evidence-backed durable-memory updates may also be written directly through agent results, manual/admin flows, imports, validation, compaction, and other lifecycle operations.
+
 ## Token Discipline (Required)
 
 When running agents (including Claude, Codex, bass-agents), optimize for low token usage and avoid repeated context churn.

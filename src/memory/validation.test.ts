@@ -22,6 +22,9 @@ describe('validateMemoryEntry', () => {
         note: 'Implementation of JWT token generation'
       }
     ],
+    provenance: {
+      source_type: 'manual'
+    },
     created_by: 'agent-1'
   };
 
@@ -36,6 +39,25 @@ describe('validateMemoryEntry', () => {
     const result = validateMemoryEntry(invalidEntry);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('Field "section" is required');
+  });
+
+  test('rejects entry with missing provenance', () => {
+    const invalidEntry = { ...validEntry, provenance: undefined } as any;
+    const result = validateMemoryEntry(invalidEntry);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Field "provenance" is required');
+  });
+
+  test('rejects field-note provenance without source_ref', () => {
+    const invalidEntry = {
+      ...validEntry,
+      provenance: { source_type: 'field_note' as const }
+    };
+    const result = validateMemoryEntry(invalidEntry);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      'Field "provenance.source_ref" is required when source_type is "field_note"'
+    );
   });
 
   test('rejects entry with invalid section', () => {
