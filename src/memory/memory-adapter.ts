@@ -30,15 +30,14 @@ import { logQuery, analyzeQueryPatterns, QueryPatternStats } from './query-logge
 import { getStatistics, MemoryStatistics, StatisticsDateRange } from './statistics';
 import { logger } from './logger';
 import { statisticsCache } from './statistics-cache';
-
-/**
- * Configuration metadata for a memory project
- */
-interface ProjectConfig {
-  project: string;
-  created_at: string;
-  version: string;
-}
+import {
+  assertPathWithinProject,
+  defaultBassAgentsConfig,
+  loadProjectContext,
+  ProjectContext,
+  ResolvedProjectContext,
+  writeProjectConfig,
+} from '../project-context';
 
 /**
  * Beads issue structure (parsed from issues.jsonl)
@@ -57,15 +56,26 @@ interface BeadsIssue {
  * MemoryAdapter provides the core API for memory operations
  */
 export class MemoryAdapter {
-  private workspaceRoot: string;
+  private context: ResolvedProjectContext;
+  private readonly useJsonlFallback: boolean = true;
 
-  constructor(workspaceRoot: string) {
-    this.workspaceRoot = workspaceRoot;
+  constructor(projectRootOrContext: string | ProjectContext | ResolvedProjectContext) {
+    if (typeof projectRootOrContext === 'string') {
+      this.context = loadProjectContext(projectRootOrContext);
+      return;
+    }
+
+    if ('configPath' in projectRootOrContext) {
+      this.context = projectRootOrContext;
+      return;
+    }
+
+    this.context = loadProjectContext(projectRootOrContext.projectRoot);
   }
 
   /**
-   * Initialize memory storage for a project.
-   * Creates ai-memory/{project}/ directory and initializes Beads repository.
+   * Initialize memory storage for the current project.
+   * Creates ai-memory/ directory and initializes the local Beads repository.
    * 
    * Requirements:
    * - 2.2: Store Project_Memory at ai-memory/{project-name}/
@@ -74,16 +84,25 @@ export class MemoryAdapter {
    * - 7.11: Create directory at workspace root
    * - 7.12: Create configuration metadata
    * 
-   * @param project - Project name (or "global" for global memory)
    */
-  async init(project: string): Promise<void> {
-    const memoryPath = this.getMemoryPath(project);
-    
-    // Validate workspace boundary (Requirement 2.7)
-    this.validateWorkspaceBoundary(memoryPath, 'init');
+  async init(_project?: string): Promise<void> {
+    if (!this.context.initialized) {
+      await writeProjectConfig(
+        this.context.projectRoot,
+        defaultBassAgentsConfig(true)
+      );
+      this.refreshContext();
+    }
+
+    const memoryPath = this.context.memoryRoot;
 
     // Create directory if it doesn't exist
     await fs.promises.mkdir(memoryPath, { recursive: true });
+
+    if (this.useJsonlFallback) {
+      await this.initializeJsonlFallback(memoryPath);
+      return;
+    }
 
     // Initialize Beads repository
     try {
@@ -94,30 +113,14 @@ export class MemoryAdapter {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // In shared DB/server setups, bd may report that the workspace is already initialized.
-      // Treat this as non-fatal so init remains idempotent.
       if (message.includes('already initialized')) {
         // continue
+      } else if (this.shouldFallbackToJsonl(error)) {
+        await this.initializeJsonlFallback(memoryPath);
       } else {
-      throw new Error(`Failed to initialize Beads repository: ${error}`);
+        throw new Error(`Failed to initialize Beads repository: ${error}`);
       }
     }
-
-    // Do not force no-db mode: default Beads setup should remain DB-backed when available.
-
-    // Create .config.json with project metadata
-    const config: ProjectConfig = {
-      project,
-      created_at: new Date().toISOString(),
-      version: '1.0.0'
-    };
-
-    const configPath = path.join(memoryPath, '.config.json');
-    await fs.promises.writeFile(
-      configPath,
-      JSON.stringify(config, null, 2),
-      'utf-8'
-    );
   }
 
   /**
@@ -129,11 +132,14 @@ export class MemoryAdapter {
    * - 5.7: Validate confidence, evidence, kind, subject, scope, summary
    * - 16.6: Check for duplicates (same subject, scope, summary)
    * 
-   * @param project - Project name
    * @param entry - Memory entry input
    * @returns Memory_ID of created entry
    */
-  async create(project: string, entry: MemoryEntryInput): Promise<string> {
+  async create(
+    projectOrEntry: string | MemoryEntryInput,
+    maybeEntry?: MemoryEntryInput
+  ): Promise<string> {
+    const entry = this.resolveArg(projectOrEntry, maybeEntry);
     const startTime = Date.now();
     const normalizedEntry = this.withDefaultProvenance(entry, {
       source_type: 'manual',
@@ -156,8 +162,8 @@ export class MemoryAdapter {
     }
 
     // Check for duplicates
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+    const memoryPath = this.context.memoryRoot;
+    await this.ensureWritableStorage();
 
     const existingEntries = await this.readAllIssues(memoryPath);
 
@@ -203,6 +209,19 @@ export class MemoryAdapter {
 
     const body = `${normalizedEntry.content}\n\n---METADATA---\n${JSON.stringify(metadata, null, 2)}`;
 
+    if (this.useJsonlFallback) {
+      const issueId = await this.createIssueJsonlFallback(memoryPath, {
+        title: normalizedEntry.summary,
+        body,
+        labels,
+        created_by: normalizedEntry.created_by,
+      });
+      const duration = Date.now() - startTime;
+      this.logConcurrentWrite('create', issueId, normalizedEntry.created_by, duration);
+      statisticsCache.invalidate(this.getCacheKey());
+      return issueId;
+    }
+
     try {
       const output = this.runBdCommand(
         [
@@ -220,31 +239,24 @@ export class MemoryAdapter {
       );
       const issueId = this.extractIssueId(output);
       const duration = Date.now() - startTime;
-      
-      // Log concurrent write attempt for debugging (Requirement 12.4)
-      // Beads hash-based IDs provide conflict-free creates (Requirement 12.1, 12.2)
-      this.logConcurrentWrite('create', project, issueId, normalizedEntry.created_by, duration);
-      
-      // Invalidate statistics cache after write (Requirement 22.9)
-      statisticsCache.invalidate(project);
+      this.logConcurrentWrite('create', issueId, normalizedEntry.created_by, duration);
+      statisticsCache.invalidate(this.getCacheKey());
       await this.syncJsonlExport(memoryPath);
-      
       return issueId;
     } catch (error) {
       if (!this.shouldFallbackToJsonl(error)) {
         throw new Error(`Failed to create Beads issue: ${error}`);
       }
 
-      // Fallback for environments where Beads DB mode is unavailable.
-      const issueId = await this.createIssueJsonlFallback(memoryPath, project, {
+      const issueId = await this.createIssueJsonlFallback(memoryPath, {
         title: normalizedEntry.summary,
         body,
         labels,
         created_by: normalizedEntry.created_by,
       });
       const duration = Date.now() - startTime;
-      this.logConcurrentWrite('create', project, issueId, normalizedEntry.created_by, duration);
-      statisticsCache.invalidate(project);
+      this.logConcurrentWrite('create', issueId, normalizedEntry.created_by, duration);
+      statisticsCache.invalidate(this.getCacheKey());
       return issueId;
     }
   }
@@ -257,40 +269,46 @@ export class MemoryAdapter {
    * - 5.2: Mark entries as superseded
    * - 5.4: Set status to "superseded" and populate superseded_by
    * 
-   * @param project - Project name
    * @param targetId - Memory_ID of entry to supersede
    * @param replacementEntry - New entry to replace the target
    * @returns Memory_ID of replacement entry
    */
   async supersede(
-    project: string,
-    targetId: string,
-    replacementEntry: MemoryEntryInput
+    projectOrTargetId: string,
+    targetIdOrReplacementEntry: string | MemoryEntryInput,
+    maybeReplacementEntry?: MemoryEntryInput
   ): Promise<string> {
+    const targetId =
+      typeof targetIdOrReplacementEntry === 'string'
+        ? targetIdOrReplacementEntry
+        : projectOrTargetId;
+    const replacementEntry =
+      typeof targetIdOrReplacementEntry === 'string'
+        ? maybeReplacementEntry!
+        : targetIdOrReplacementEntry;
     const startTime = Date.now();
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+    await this.ensureWritableStorage();
 
     // Get target entry
-    const targetEntry = await this.get(project, targetId);
+    const targetEntry = await this.get(targetId);
     if (!targetEntry) {
       throw new Error(`Target entry not found: ${targetId}`);
     }
 
     // Create replacement entry
-    const replacementId = await this.create(project, replacementEntry);
+    const replacementId = await this.create(replacementEntry);
 
     // Update target entry: set status to "superseded"
     // Last-write-wins strategy for concurrent updates (Requirement 12.3)
-    await this.updateEntry(project, {
+    await this.updateEntry({
       ...targetEntry,
       status: 'superseded',
       superseded_by: replacementId,
       updated_at: new Date().toISOString(),
     });
     const duration = Date.now() - startTime;
-    this.logConcurrentWrite('supersede', project, targetId, replacementEntry.created_by, duration);
-    statisticsCache.invalidate(project);
+    this.logConcurrentWrite('supersede', targetId, replacementEntry.created_by, duration);
+    statisticsCache.invalidate(this.getCacheKey());
 
     return replacementId;
   }
@@ -303,31 +321,30 @@ export class MemoryAdapter {
    * - 5.3: Mark entries as deprecated
    * - 5.5: Set status to "deprecated" without superseded_by
    * 
-   * @param project - Project name
    * @param targetId - Memory_ID of entry to deprecate
    */
-  async deprecate(project: string, targetId: string): Promise<void> {
+  async deprecate(projectOrTargetId: string, maybeTargetId?: string): Promise<void> {
+    const targetId = maybeTargetId || projectOrTargetId;
     const startTime = Date.now();
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+    await this.ensureWritableStorage();
 
     // Get target entry
-    const targetEntry = await this.get(project, targetId);
+    const targetEntry = await this.get(targetId);
     if (!targetEntry) {
       throw new Error(`Target entry not found: ${targetId}`);
     }
 
     // Update entry: set status to "deprecated"
     // Last-write-wins strategy for concurrent updates (Requirement 12.3)
-    await this.updateEntry(project, {
+    await this.updateEntry({
       ...targetEntry,
       status: 'deprecated',
       superseded_by: null,
       updated_at: new Date().toISOString(),
     });
     const duration = Date.now() - startTime;
-    this.logConcurrentWrite('deprecate', project, targetId, 'system', duration);
-    statisticsCache.invalidate(project);
+    this.logConcurrentWrite('deprecate', targetId, 'system', duration);
+    statisticsCache.invalidate(this.getCacheKey());
   }
 
   /**
@@ -343,17 +360,21 @@ export class MemoryAdapter {
    * - 15.1-15.8: Smart retrieval rules (ranking, scope hierarchy)
    * - 17.1-17.5: Scope-based access control with hierarchy
    *
-   * @param project - Project name
    * @param filters - Query filters
    * @returns Array of matching memory entries
    */
-  async query(project: string, filters: MemoryQueryFilters = {}): Promise<MemoryEntry[]> {
-    const memoryPath = this.getMemoryPath(project);
+  async query(
+    projectOrFilters?: string | MemoryQueryFilters,
+    maybeFilters?: MemoryQueryFilters
+  ): Promise<MemoryEntry[]> {
+    const filters =
+      typeof projectOrFilters === 'string'
+        ? maybeFilters || {}
+        : projectOrFilters || {};
+    const memoryPath = this.context.memoryRoot;
 
     // Graceful degradation: return empty array if not initialized
-    try {
-      await fs.promises.access(path.join(memoryPath, '.config.json'), fs.constants.F_OK);
-    } catch {
+    if (!this.context.initialized || !this.context.durableMemoryEnabled) {
       return [];
     }
 
@@ -383,16 +404,16 @@ export class MemoryAdapter {
 
     // Include related entries if requested (Requirement 4.11)
     if (effectiveFilters.includeRelated) {
-      const relatedEntries = await this.fetchRelatedEntries(project, entries);
+      const relatedEntries = await this.fetchRelatedEntries(entries);
       entries = [...entries, ...relatedEntries];
     }
 
     // Log query for pattern tracking (Requirement 22.6)
     try {
-      await logQuery(project, effectiveFilters, entries.length, this.workspaceRoot);
+      await logQuery(this.context.memoryRoot, this.context.projectName, effectiveFilters, entries.length);
     } catch (error) {
       // Don't fail query if logging fails
-      logger.warn('Failed to log query', { project, error });
+      logger.warn('Failed to log query', { project: this.context.projectName, error });
     }
 
     return entries;
@@ -405,16 +426,14 @@ export class MemoryAdapter {
    * - 2.6: Retrieve entries by Memory_ID
    * - 4.11: Support single entry retrieval
    *
-   * @param project - Project name
    * @param id - Memory_ID
    * @returns Memory entry or null if not found
    */
-  async get(project: string, id: string): Promise<MemoryEntry | null> {
-    const memoryPath = this.getMemoryPath(project);
+  async get(projectOrId: string, maybeId?: string): Promise<MemoryEntry | null> {
+    const id = maybeId || projectOrId;
+    const memoryPath = this.context.memoryRoot;
 
-    try {
-      await fs.promises.access(path.join(memoryPath, '.config.json'), fs.constants.F_OK);
-    } catch {
+    if (!this.context.initialized || !this.context.durableMemoryEnabled) {
       return null;
     }
 
@@ -435,12 +454,12 @@ export class MemoryAdapter {
    * - 2.6: Support relationships between memory entries
    * - 4.11: Follow related_entries links
    *
-   * @param project - Project name
    * @param id - Memory_ID
    * @returns Array of related memory entries
    */
-  async getRelated(project: string, id: string): Promise<MemoryEntry[]> {
-    const entry = await this.get(project, id);
+  async getRelated(projectOrId: string, maybeId?: string): Promise<MemoryEntry[]> {
+    const id = maybeId || projectOrId;
+    const entry = await this.get(id);
 
     if (!entry || !entry.related_entries || entry.related_entries.length === 0) {
       return [];
@@ -449,7 +468,7 @@ export class MemoryAdapter {
     const relatedEntries: MemoryEntry[] = [];
 
     for (const relatedId of entry.related_entries) {
-      const relatedEntry = await this.get(project, relatedId);
+      const relatedEntry = await this.get(relatedId);
       if (relatedEntry) {
         relatedEntries.push(relatedEntry);
       }
@@ -468,13 +487,16 @@ export class MemoryAdapter {
    * - 6.4: Provide a log of what was consolidated
    * - 6.5: Allow manual review before applying (via dryRun flag)
    *
-   * @param project - Project name
    * @param dryRun - If true, preview changes without applying them
    * @returns Compaction report with details of what was/would be consolidated
    */
-  async compact(project: string, dryRun: boolean = false): Promise<CompactionReport> {
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+  async compact(projectOrDryRun?: string | boolean, maybeDryRun?: boolean): Promise<CompactionReport> {
+    const dryRun =
+      typeof projectOrDryRun === 'boolean'
+        ? projectOrDryRun
+        : maybeDryRun || false;
+    const memoryPath = this.context.memoryRoot;
+    await this.ensureWritableStorage();
 
     // Get current entry count
     const allEntries = await this.readAllIssues(memoryPath);
@@ -485,9 +507,22 @@ export class MemoryAdapter {
     // Warn if memory exceeds 100 entries (Requirement 6.2)
     if (allEntries.length > 100) {
       console.warn(
-        `Warning: Memory for project "${project}" has ${allEntries.length} entries. ` +
+        `Warning: Memory for project "${this.context.projectName}" has ${allEntries.length} entries. ` +
         `Consider running compaction to consolidate old entries.`
       );
+    }
+
+    if (this.useJsonlFallback) {
+      return {
+        project: this.context.projectName,
+        timestamp: new Date().toISOString(),
+        dryRun,
+        totalEntries: allEntries.length,
+        supersededEntries: supersededCount,
+        compactedCount: 0,
+        output: 'Compaction is unavailable in local JSONL fallback mode',
+        success: false,
+      };
     }
 
     // Execute bd compact command
@@ -501,7 +536,7 @@ export class MemoryAdapter {
 
       // Parse output to create report
       const report: CompactionReport = {
-        project,
+        project: this.context.projectName,
         timestamp: new Date().toISOString(),
         dryRun,
         totalEntries: allEntries.length,
@@ -515,7 +550,7 @@ export class MemoryAdapter {
     } catch (error) {
       // If bd compact fails (e.g., command not available), return graceful report
       const report: CompactionReport = {
-        project,
+        project: this.context.projectName,
         timestamp: new Date().toISOString(),
         dryRun,
         totalEntries: allEntries.length,
@@ -540,16 +575,14 @@ export class MemoryAdapter {
    * - 7.7: Provide command to list entries approaching expiry
    * - 19.4: Generate freshness report
    *
-   * @param project - Project name
    * @returns Freshness report (empty in simplified implementation)
    */
-  async checkFreshness(project: string): Promise<FreshnessReport> {
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+  async checkFreshness(_project?: string): Promise<FreshnessReport> {
+    await this.ensureWritableStorage();
 
     // Simplified: No temporal validity tracking, return empty report
     const report: FreshnessReport = {
-      project,
+      project: this.context.projectName,
       timestamp: new Date().toISOString(),
       expiringEntries: [],
       message: 'Freshness checking is not implemented (no temporal validity tracking)'
@@ -569,12 +602,11 @@ export class MemoryAdapter {
    * - 7.6: Provide command to check all evidence URIs
    * - 18.6: Generate validation report
    *
-   * @param project - Project name
    * @returns Evidence validation report (simplified)
    */
-  async validateEvidence(project: string): Promise<EvidenceValidationReport> {
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+  async validateEvidence(_project?: string): Promise<EvidenceValidationReport> {
+    const memoryPath = this.context.memoryRoot;
+    await this.ensureInitialized();
 
     const allEntries = await this.readAllIssues(memoryPath);
 
@@ -586,7 +618,7 @@ export class MemoryAdapter {
     }
 
     const report: EvidenceValidationReport = {
-      project,
+      project: this.context.projectName,
       timestamp: new Date().toISOString(),
       totalEntries: allEntries.length,
       totalEvidence,
@@ -612,6 +644,10 @@ export class MemoryAdapter {
    * Read all issues from .beads/issues.jsonl
    */
   private async readAllIssues(memoryPath: string): Promise<BeadsIssue[]> {
+    if (this.useJsonlFallback) {
+      return this.readIssuesJsonl(memoryPath);
+    }
+
     const beadsDir = this.getBeadsDir(memoryPath);
     try {
       const output = this.runBdCommand(['list', '--json'], memoryPath, beadsDir);
@@ -631,28 +667,7 @@ export class MemoryAdapter {
       // Fall through to JSONL read path.
     }
 
-    const issuesPath = path.join(memoryPath, '.beads', 'issues.jsonl');
-
-    try {
-      const content = await fs.promises.readFile(issuesPath, 'utf-8');
-      const lines = content.trim().split('\n').filter(line => line.trim());
-      
-      return lines.map(line => {
-        const data = JSON.parse(line);
-        return {
-          id: data.id,
-          title: data.title || '',
-          body: data.body || '',
-          labels: data.labels || [],
-          created_by: data.created_by || data.createdBy || '',
-          created_at: data.created_at || data.createdAt || new Date().toISOString(),
-          updated_at: data.updated_at || data.updatedAt || new Date().toISOString(),
-        };
-      });
-    } catch (error) {
-      // If file doesn't exist or is empty, return empty array
-      return [];
-    }
+    return this.readIssuesJsonl(memoryPath);
   }
 
   /**
@@ -979,7 +994,6 @@ export class MemoryAdapter {
    * Requirement 4.11: Follow related_entries links
    */
   private async fetchRelatedEntries(
-    project: string,
     entries: MemoryEntry[]
   ): Promise<MemoryEntry[]> {
     const relatedIds = new Set<string>();
@@ -1000,7 +1014,7 @@ export class MemoryAdapter {
     const relatedEntries: MemoryEntry[] = [];
 
     for (const id of relatedIds) {
-      const entry = await this.get(project, id);
+      const entry = await this.get(id);
       if (entry) {
         relatedEntries.push(entry);
       }
@@ -1010,58 +1024,52 @@ export class MemoryAdapter {
   }
 
   /**
-   * Get the memory path for a project
+   * Ensure memory is initialized for the current project.
+   * Standard behavior: fail fast with setup guidance if not initialized.
    */
-  private getMemoryPath(project: string): string {
-    return path.join(this.workspaceRoot, 'ai-memory', project);
-  }
-  /**
-   * Validate that a path is within the workspace boundary.
-   * Throws an error if the path attempts to escape the workspace root.
-   *
-   * Requirements:
-   * - 2.7: Memory system SHALL NOT write memory data outside workspace root directory
-   *
-   * @param targetPath - Path to validate
-   * @param operation - Operation name for error messages
-   * @throws Error if path is outside workspace boundary
-   */
-  private validateWorkspaceBoundary(targetPath: string, operation: string): void {
-    // Resolve both paths to absolute paths
-    const resolvedTarget = path.resolve(targetPath);
-    const resolvedWorkspace = path.resolve(this.workspaceRoot);
-
-    // Check if the target path starts with the workspace root
-    // Use path.relative to check if we need to go up (..) to reach workspace
-    const relativePath = path.relative(resolvedWorkspace, resolvedTarget);
-
-    // If relative path starts with '..' or is absolute, it's outside workspace
-    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+  private async ensureInitialized(): Promise<void> {
+    if (!this.context.initialized) {
       throw new Error(
-        `Workspace boundary violation: ${operation} attempted to access path outside workspace root.\n` +
-        `Workspace root: ${resolvedWorkspace}\n` +
-        `Attempted path: ${resolvedTarget}\n` +
-        `All memory operations must stay within the workspace directory.`
+        `bass-agents is not initialized for this project root.\n` +
+        `Run: bass-agents init --durable-memory`
+      );
+    }
+
+    if (!this.context.durableMemoryEnabled) {
+      throw new Error(
+        `Durable memory is disabled for this project.\n` +
+        `Re-run: bass-agents init --durable-memory`
+      );
+    }
+
+    const beadsDir = this.getBeadsDir(this.context.memoryRoot);
+    try {
+      await fs.promises.access(beadsDir, fs.constants.F_OK);
+    } catch {
+      throw new Error(
+        `Durable memory is not initialized at ${this.context.memoryRoot}.\n` +
+        `Run: bass-agents init --durable-memory`
       );
     }
   }
 
-  /**
-   * Ensure memory is initialized for a project.
-   * Standard behavior: fail fast with setup guidance if not initialized.
-   */
-  private async ensureInitialized(project: string, memoryPath: string): Promise<void> {
-    const configPath = path.join(memoryPath, '.config.json');
-    
-    try {
-      await fs.promises.access(configPath, fs.constants.F_OK);
-    } catch {
+  private async ensureWritableStorage(): Promise<void> {
+    if (!this.context.initialized) {
+      await this.init();
+      return;
+    }
+
+    if (!this.context.durableMemoryEnabled) {
       throw new Error(
-        `Memory project "${project}" is not initialized at ${memoryPath}.\n` +
-        `Run: bass-agents memory init ${project}\n` +
-        `Initialize Beads in the primary repo checkout with: bd init\n` +
-        `For additional working directories, use: bd worktree create <path> --branch <branch-name>`
+        `Durable memory is disabled for this project.\n` +
+        `Re-run: bass-agents init --durable-memory`
       );
+    }
+
+    try {
+      await fs.promises.access(this.getBeadsDir(this.context.memoryRoot), fs.constants.F_OK);
+    } catch {
+      await this.init();
     }
   }
 
@@ -1071,20 +1079,26 @@ export class MemoryAdapter {
   /**
    * Export memory entries to JSONL format
    * 
-   * @param project - Project name
    * @param outputPath - Path to output JSONL file
    * @param filters - Optional filters for export
    */
   async export(
-    project: string,
-    outputPath: string,
-    filters?: ExportFilters
+    projectOrOutputPath: string,
+    outputPathOrFilters?: string | ExportFilters,
+    maybeFilters?: ExportFilters
   ): Promise<void> {
-    // Validate workspace boundary for output path (Requirement 2.7)
-    this.validateWorkspaceBoundary(outputPath, 'export');
-    
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+    const outputPath =
+      typeof outputPathOrFilters === 'string' ? outputPathOrFilters : projectOrOutputPath;
+    const filters =
+      typeof outputPathOrFilters === 'string' ? maybeFilters : outputPathOrFilters;
+    const safeOutputPath = assertPathWithinProject(
+      this.context.projectRoot,
+      path.isAbsolute(outputPath)
+        ? outputPath
+        : path.join(this.context.projectRoot, outputPath),
+      'export output'
+    );
+    await this.ensureWritableStorage();
 
     // Build query filters from export filters
     const queryFilters: MemoryQueryFilters = {
@@ -1105,7 +1119,7 @@ export class MemoryAdapter {
     }
 
     // Query entries with filters
-    const entries = await this.query(project, queryFilters);
+    const entries = await this.query(queryFilters);
 
     // Write entries to JSONL format (one JSON object per line)
     const lines = entries.map(entry => JSON.stringify(entry));
@@ -1113,38 +1127,56 @@ export class MemoryAdapter {
 
     // Ensure output directory exists
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const outputDir = path.dirname(outputPath);
+    const pathModule = await import('path');
+    const outputDir = pathModule.dirname(safeOutputPath);
     await fs.mkdir(outputDir, { recursive: true });
 
     // Write to file
-    await fs.writeFile(outputPath, content, 'utf-8');
+    await fs.writeFile(safeOutputPath, content, 'utf-8');
   }
 
   /**
    * Import memory entries from JSONL format
    * 
-   * @param project - Project name
    * @param inputPath - Path to input JSONL file
    * @param conflictStrategy - Strategy for handling conflicts (skip, overwrite, merge)
    */
   async import(
-    project: string,
-    inputPath: string,
-    conflictStrategy: ConflictStrategy = 'skip'
+    projectOrInputPath: string,
+    inputPathOrConflictStrategy?: string | ConflictStrategy,
+    maybeConflictStrategy: ConflictStrategy = 'skip'
   ): Promise<ImportReport> {
-    // Validate workspace boundary for input path (Requirement 2.7)
-    this.validateWorkspaceBoundary(inputPath, 'import');
-    
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+    const isConflictStrategy =
+      inputPathOrConflictStrategy === 'skip' ||
+      inputPathOrConflictStrategy === 'overwrite' ||
+      inputPathOrConflictStrategy === 'merge';
+    const inputPath =
+      isConflictStrategy
+        ? projectOrInputPath
+        : typeof inputPathOrConflictStrategy === 'string'
+        ? inputPathOrConflictStrategy
+        : projectOrInputPath;
+    const conflictStrategy =
+      isConflictStrategy
+        ? inputPathOrConflictStrategy
+        : typeof inputPathOrConflictStrategy === 'string'
+        ? maybeConflictStrategy
+        : inputPathOrConflictStrategy || 'skip';
+    const safeInputPath = assertPathWithinProject(
+      this.context.projectRoot,
+      path.isAbsolute(inputPath)
+        ? inputPath
+        : path.join(this.context.projectRoot, inputPath),
+      'import input'
+    );
+    await this.ensureWritableStorage();
 
     const fs = await import('fs/promises');
-    const content = await fs.readFile(inputPath, 'utf-8');
+    const content = await fs.readFile(safeInputPath, 'utf-8');
     const lines = content.split('\n').filter(line => line.trim());
 
     const report: ImportReport = {
-      project,
+      project: this.context.projectName,
       timestamp: new Date().toISOString(),
       totalEntries: lines.length,
       successCount: 0,
@@ -1162,7 +1194,7 @@ export class MemoryAdapter {
         });
 
         // Check if entry already exists
-        const existing = await this.get(project, entry.id);
+        const existing = await this.get(entry.id);
 
         if (existing) {
           // Handle conflict
@@ -1176,7 +1208,7 @@ export class MemoryAdapter {
           } else if (conflictStrategy === 'overwrite') {
             // Update existing entry by creating a new one with same ID
             // This is a simplified approach - in production, we'd need proper update logic
-            await this.updateEntry(project, entry);
+            await this.updateEntry(entry);
             report.successCount++;
             report.conflicts.push({
               id: entry.id,
@@ -1185,7 +1217,7 @@ export class MemoryAdapter {
           } else if (conflictStrategy === 'merge') {
             // Merge entries: prefer higher confidence, merge evidence arrays, union tags
             const merged = this.mergeEntries(existing, entry);
-            await this.updateEntry(project, merged);
+            await this.updateEntry(merged);
             report.successCount++;
             report.conflicts.push({
               id: entry.id,
@@ -1213,7 +1245,7 @@ export class MemoryAdapter {
             created_by: entry.created_by,
           };
 
-          await this.create(project, entryInput);
+          await this.create(entryInput);
           report.successCount++;
         }
       } catch (error) {
@@ -1232,14 +1264,12 @@ export class MemoryAdapter {
   /**
    * Sync high-confidence memory entries to ai-context/ directory
    * 
-   * @param project - Project name
    */
-  async syncContext(project: string): Promise<void> {
-    const memoryPath = this.getMemoryPath(project);
-    await this.ensureInitialized(project, memoryPath);
+  async syncContext(_project?: string): Promise<void> {
+    await this.ensureInitialized();
 
     // Query high-confidence entries with code/artifact evidence
-    const entries = await this.query(project, {
+    const entries = await this.query({
       minConfidence: 0.8,
       status: ['active'],
       limit: 50,
@@ -1262,17 +1292,14 @@ export class MemoryAdapter {
 
     // Generate summaries for each subject
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const contextDir = path.join(this.workspaceRoot, 'ai-context', project);
-    
-    // Validate workspace boundary for context directory (Requirement 2.7)
-    this.validateWorkspaceBoundary(contextDir, 'syncContext');
+    const pathModule = await import('path');
+    const contextDir = this.context.aiContextRoot;
     
     await fs.mkdir(contextDir, { recursive: true });
 
     for (const [subject, subjectEntries] of bySubject) {
       const filename = `${subject.replace(/[^a-z0-9-]/gi, '_')}.md`;
-      const filepath = path.join(contextDir, filename);
+      const filepath = pathModule.join(contextDir, filename);
 
       let content = `# ${subject}\n\n`;
       content += `*Generated from durable memory on ${new Date().toISOString()}*\n\n`;
@@ -1304,8 +1331,8 @@ export class MemoryAdapter {
   /**
    * Update an existing memory entry (helper for import)
    */
-  private async updateEntry(project: string, entry: MemoryEntry): Promise<void> {
-    const memoryPath = this.getMemoryPath(project);
+  private async updateEntry(entry: MemoryEntry): Promise<void> {
+    const memoryPath = this.context.memoryRoot;
     
     const labels = [
       `section:${entry.section}`,
@@ -1327,6 +1354,16 @@ export class MemoryAdapter {
     const body = `${entry.content}\n\n---METADATA---\n${JSON.stringify(metadata, null, 2)}`;
 
     try {
+      if (this.useJsonlFallback) {
+        await this.updateIssueJsonlFallback(memoryPath, entry.id, issue => ({
+          ...issue,
+          title: entry.summary,
+          body,
+          labels,
+          updated_at: new Date().toISOString(),
+        }));
+        return;
+      }
       this.runBdCommand(
         [
           'update',
@@ -1418,6 +1455,9 @@ export class MemoryAdapter {
   }
 
   private async syncJsonlExport(memoryPath: string): Promise<void> {
+    if (this.useJsonlFallback) {
+      return;
+    }
     try {
       this.runBdCommand(['sync'], memoryPath, this.getBeadsDir(memoryPath));
     } catch {
@@ -1427,6 +1467,53 @@ export class MemoryAdapter {
 
   private getBeadsDir(memoryPath: string): string {
     return path.join(memoryPath, '.beads');
+  }
+
+  private async initializeJsonlFallback(memoryPath: string): Promise<void> {
+    const beadsDir = this.getBeadsDir(memoryPath);
+    await fs.promises.mkdir(beadsDir, { recursive: true });
+
+    const configPath = path.join(beadsDir, 'config.yaml');
+    const issuesPath = path.join(beadsDir, 'issues.jsonl');
+    const interactionsPath = path.join(beadsDir, 'interactions.jsonl');
+
+    if (!fs.existsSync(configPath)) {
+      await fs.promises.writeFile(
+        configPath,
+        `issue-prefix: "${this.sanitizeIssuePrefix(this.context.projectName)}"\n`,
+        'utf-8'
+      );
+    }
+    if (!fs.existsSync(issuesPath)) {
+      await fs.promises.writeFile(issuesPath, '', 'utf-8');
+    }
+    if (!fs.existsSync(interactionsPath)) {
+      await fs.promises.writeFile(interactionsPath, '', 'utf-8');
+    }
+  }
+
+  private async readIssuesJsonl(memoryPath: string): Promise<BeadsIssue[]> {
+    const issuesPath = path.join(memoryPath, '.beads', 'issues.jsonl');
+
+    try {
+      const content = await fs.promises.readFile(issuesPath, 'utf-8');
+      const lines = content.trim().split('\n').filter(line => line.trim());
+
+      return lines.map(line => {
+        const data = JSON.parse(line);
+        return {
+          id: data.id,
+          title: data.title || '',
+          body: data.body || '',
+          labels: data.labels || [],
+          created_by: data.created_by || data.createdBy || '',
+          created_at: data.created_at || data.createdAt || new Date().toISOString(),
+          updated_at: data.updated_at || data.updatedAt || new Date().toISOString(),
+        };
+      });
+    } catch {
+      return [];
+    }
   }
 
   private extractIssueId(output: string): string {
@@ -1472,20 +1559,22 @@ export class MemoryAdapter {
     return (
       message.includes('no beads database found') ||
       message.includes('requires CGO') ||
-      message.includes('Dolt backend configured but database not found')
+      message.includes('Dolt backend configured but database not found') ||
+      message.includes('failed to open database') ||
+      message.includes('Dolt server unreachable') ||
+      message.includes('operation not permitted')
     );
   }
 
   private async createIssueJsonlFallback(
     memoryPath: string,
-    project: string,
     input: { title: string; body: string; labels: string[]; created_by: string }
   ): Promise<string> {
     const issuesPath = path.join(memoryPath, '.beads', 'issues.jsonl');
     await fs.promises.mkdir(path.dirname(issuesPath), { recursive: true });
 
     const now = new Date().toISOString();
-    const prefix = await this.getIssuePrefix(memoryPath, project);
+    const prefix = await this.getIssuePrefix(memoryPath);
     const hash = createHash('sha1')
       .update(`${input.title}\n${input.body}\n${now}\n${Math.random()}`)
       .digest('hex')
@@ -1533,7 +1622,7 @@ export class MemoryAdapter {
     await fs.promises.writeFile(issuesPath, `${updatedLines.join('\n')}\n`, 'utf-8');
   }
 
-  private async getIssuePrefix(memoryPath: string, project: string): Promise<string> {
+  private async getIssuePrefix(memoryPath: string): Promise<string> {
     const configPath = path.join(memoryPath, '.beads', 'config.yaml');
     try {
       const config = await fs.promises.readFile(configPath, 'utf-8');
@@ -1544,7 +1633,7 @@ export class MemoryAdapter {
     } catch {
       // Fall back to project name.
     }
-    return this.sanitizeIssuePrefix(project);
+    return this.sanitizeIssuePrefix(this.context.projectName);
   }
 
   private sanitizeIssuePrefix(prefix: string): string {
@@ -1562,14 +1651,12 @@ export class MemoryAdapter {
    * - 12.4: Log all concurrent write attempts for debugging
    * 
    * @param operation - Type of operation (create, supersede, deprecate)
-   * @param project - Project name
    * @param entryId - Memory entry ID
    * @param agent - Agent identifier
    * @param duration - Operation duration in milliseconds
    */
   private logConcurrentWrite(
     operation: 'create' | 'supersede' | 'deprecate',
-    project: string,
     entryId: string,
     agent: string,
     duration: number
@@ -1578,7 +1665,7 @@ export class MemoryAdapter {
     const logEntry = {
       timestamp,
       operation,
-      project,
+      project: this.context.projectName,
       entryId,
       agent,
       duration_ms: duration
@@ -1595,19 +1682,19 @@ export class MemoryAdapter {
    * Beads stores all memory entries in git, providing automatic version history.
    * To retrieve previous versions of an entry:
    * 
-   * 1. Navigate to the memory directory: ai-memory/{project}/.beads/
+   * 1. Navigate to the memory directory: ai-memory/.beads/
    * 2. Use git log to see history: git log --all -- "*{entryId}*"
    * 3. Use git show to view specific versions: git show {commit}:{path}
    * 
    * Requirements:
    * - 12.5: Provide version history for memory entries
    * 
-   * @param project - Project name
    * @param entryId - Memory entry ID
    * @returns Instructions for accessing version history
    */
-  getVersionHistoryInstructions(project: string, entryId: string): string {
-    const memoryPath = this.getMemoryPath(project);
+  getVersionHistoryInstructions(projectOrEntryId: string, maybeEntryId?: string): string {
+    const entryId = maybeEntryId || projectOrEntryId;
+    const memoryPath = this.context.memoryRoot;
     return `
 Version history for entry ${entryId} is available via git:
 
@@ -1637,28 +1724,35 @@ providing complete version history and audit trail.
    * - 22.9: Use caching for efficient statistics computation
    * - 22.10: Support date range filtering
    * 
-   * @param project - Project name
    * @param dateRange - Optional date range filter
    * @param bypassCache - If true, bypass cache and force recomputation (for --no-cache flag)
    * @returns Memory statistics
    */
   async getStatistics(
-    project: string,
-    dateRange?: StatisticsDateRange,
-    bypassCache: boolean = false
+    projectOrDateRange?: string | StatisticsDateRange,
+    dateRangeOrBypassCache?: StatisticsDateRange | boolean,
+    maybeBypassCache: boolean = false
   ): Promise<MemoryStatistics> {
+    const dateRange =
+      typeof projectOrDateRange === 'string'
+        ? (typeof dateRangeOrBypassCache === 'boolean' ? undefined : dateRangeOrBypassCache)
+        : projectOrDateRange;
+    const bypassCache =
+      typeof projectOrDateRange === 'string'
+        ? maybeBypassCache
+        : (typeof dateRangeOrBypassCache === 'boolean' ? dateRangeOrBypassCache : false);
+    const cacheKey = this.getCacheKey();
+
     // Check cache first (unless bypassed)
-    const cached = statisticsCache.get(project, dateRange, bypassCache);
+    const cached = statisticsCache.get(cacheKey, dateRange, bypassCache);
     if (cached) {
       return cached;
     }
 
-    const memoryPath = this.getMemoryPath(project);
+    const memoryPath = this.context.memoryRoot;
 
     // Graceful degradation: return empty stats if not initialized
-    try {
-      await fs.promises.access(path.join(memoryPath, '.config.json'), fs.constants.F_OK);
-    } catch {
+    if (!this.context.initialized || !this.context.durableMemoryEnabled) {
       return this.emptyStatistics();
     }
 
@@ -1667,7 +1761,11 @@ providing complete version history and audit trail.
     const entries = issues.map(issue => this.beadsIssueToMemoryEntry(issue));
 
     // Get query patterns
-    const queryPatterns = await analyzeQueryPatterns(project, this.workspaceRoot, dateRange);
+    const queryPatterns = await analyzeQueryPatterns(
+      this.context.memoryRoot,
+      this.context.projectName,
+      dateRange
+    );
 
     // Compute statistics
     const stats = getStatistics(entries, dateRange);
@@ -1681,7 +1779,7 @@ providing complete version history and audit trail.
     } as any;
 
     // Cache the result
-    statisticsCache.set(project, result, dateRange);
+    statisticsCache.set(cacheKey, result, dateRange);
 
     return result;
   }
@@ -1692,15 +1790,20 @@ providing complete version history and audit trail.
    * Requirements:
    * - 22.6: Include query pattern statistics
    * 
-   * @param project - Project name
    * @param dateRange - Optional date range filter
    * @returns Query pattern statistics
    */
   async getQueryPatterns(
-    project: string,
-    dateRange?: StatisticsDateRange
+    projectOrDateRange?: string | StatisticsDateRange,
+    maybeDateRange?: StatisticsDateRange
   ): Promise<QueryPatternStats> {
-    return analyzeQueryPatterns(project, this.workspaceRoot, dateRange);
+    const dateRange =
+      typeof projectOrDateRange === 'string' ? maybeDateRange : projectOrDateRange;
+    return analyzeQueryPatterns(
+      this.context.memoryRoot,
+      this.context.projectName,
+      dateRange
+    );
   }
 
   /**
@@ -1732,5 +1835,17 @@ providing complete version history and audit trail.
       entries_approaching_expiry: [],
       compaction_candidates: 0,
     };
+  }
+
+  private resolveArg<T>(valueOrLegacy: string | T, maybeValue?: T): T {
+    return (typeof valueOrLegacy === 'string' ? maybeValue : valueOrLegacy) as T;
+  }
+
+  private getCacheKey(): string {
+    return this.context.memoryRoot;
+  }
+
+  private refreshContext(): void {
+    this.context = loadProjectContext(this.context.projectRoot);
   }
 }

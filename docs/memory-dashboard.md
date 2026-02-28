@@ -1,6 +1,6 @@
 # Memory Analytics Dashboard
 
-The Memory Analytics Dashboard provides real-time visualization of your durable memory system's activity, health, and usage patterns. In web mode, it also includes the repo's top-level Beads ticket tracker so you can manage operational issues and durable memory from one page. This guide covers how to launch the dashboard, interpret its metrics, and use the statistics API for programmatic access.
+The Memory Analytics Dashboard provides project-local visualization of durable-memory activity, health, and usage patterns. In web mode, it combines the current project's own Beads tracker with that project's local `ai-memory/` store. This guide covers how to launch the dashboard, interpret its metrics, and use the statistics API for programmatic access.
 
 ## Table of Contents
 
@@ -16,58 +16,51 @@ The Memory Analytics Dashboard provides real-time visualization of your durable 
 
 ### Basic Usage
 
-Launch the dashboard for a specific project:
+Launch the dashboard for the current project:
 
 ```bash
-bass-agents memory dashboard <project>
+bass-agents memory dashboard
 ```
 
 Generate a web dashboard instead of launching TUI:
 
 ```bash
-bass-agents memory dashboard <project> --web
+bass-agents memory dashboard --web
 ```
 
 Web mode note:
 
-- `bass-agents memory dashboard --web` builds a workspace dashboard that combines top-level Beads tickets with durable-memory entries from `ai-memory/`.
+- `bass-agents memory dashboard --web` builds a project-local dashboard for the current project's tracker and durable memory.
+- `bass-agents dashboards --web` builds both the session-review and durable-memory dashboards under `.bass-agents/dashboards/`.
 - `bass-agents memory dashboard` without `--web` remains the durable-memory TUI.
 
 ### Command Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `[project]` | Project name to display | `global` |
-| `--all` | Show statistics for all projects | `false` |
-| `--refresh <seconds>` | Auto-refresh interval in seconds | `30` |
+| `--project <path>` | Resolve a specific project root | `cwd` |
 | `--range <7d\|30d\|all>` | Date range filter | `all` |
 | `--no-cache` | Bypass statistics cache | `false` |
 | `--web` | Generate static HTML dashboard | `false` |
-| `--out <path>` | Output path for `--web` mode | `ai-memory/<project>-dashboard.html` |
+| `--out <path>` | Output path for `--web` mode | `.bass-agents/dashboards/memory-dashboard.html` |
 
 ### Examples
 
 ```bash
-# Launch dashboard for auth-service project
-bass-agents memory dashboard auth-service
+# Launch dashboard for the current project
+bass-agents memory dashboard
 
-# Show all projects with 7-day range
-bass-agents memory dashboard --all --range 7d
+# Generate web dashboard
+bass-agents memory dashboard --web
 
-# Custom refresh interval (60 seconds)
-bass-agents memory dashboard auth-service --refresh 60
-
-# Generate web dashboard for one project
-bass-agents memory dashboard auth-service --web
-
-# Generate web dashboard for all projects
-bass-agents memory dashboard --all --web --out ai-memory/dashboard.html
+# Resolve a different project root explicitly
+bass-agents memory dashboard --project ../auth-service --range 7d
 
 # Bypass cache for real-time data
-bass-agents memory dashboard auth-service --no-cache
+bass-agents memory dashboard --no-cache
 
-# Last 30 days with 15-second refresh
-bass-agents memory dashboard auth-service --range 30d --refresh 15
+# Build both session-review and memory dashboards locally
+bass-agents dashboards --web
 ```
 
 ## Dashboard Layout
@@ -175,15 +168,14 @@ For programmatic access to memory statistics, use the `stats` command.
 ### Stats Command
 
 ```bash
-bass-agents memory stats [project] [options]
+bass-agents memory stats [options]
 ```
 
 ### Command Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `[project]` | Project name to analyze | `global` |
-| `--all` | Show statistics for all projects | `false` |
+| `--project <path>` | Resolve a specific project root | `cwd` |
 | `--range <7d\|30d\|all>` | Date range filter | `all` |
 | `--no-cache` | Bypass statistics cache | `false` |
 | `--json` | Output JSON format | `false` |
@@ -193,12 +185,12 @@ bass-agents memory stats [project] [options]
 By default, the stats command outputs a human-readable summary:
 
 ```bash
-bass-agents memory stats auth-service --range 30d
+bass-agents memory stats --range 30d
 ```
 
 Output:
 ```
-Memory Statistics for auth-service
+Memory Statistics for <current-project>
 Date Range: 30d
 ============================================================
 

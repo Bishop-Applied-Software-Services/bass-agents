@@ -78,8 +78,8 @@ describe('AgentResult Integration', () => {
 
     it('should auto-initialize memory on first write', async () => {
       // Verify memory is not initialized
-      const memoryPath = path.join(TEST_WORKSPACE, 'ai-memory', TEST_PROJECT);
-      const configPath = path.join(memoryPath, '.config.json');
+      const memoryPath = path.join(TEST_WORKSPACE, 'ai-memory');
+      const configPath = path.join(TEST_WORKSPACE, '.bass-agents', 'config.json');
       
       await expect(fs.access(configPath)).rejects.toThrow();
 
@@ -122,6 +122,7 @@ describe('AgentResult Integration', () => {
 
       // Verify memory was auto-initialized
       await expect(fs.access(configPath)).resolves.not.toThrow();
+      await expect(fs.access(memoryPath)).resolves.not.toThrow();
     });
 
     it('should handle partial failures gracefully', async () => {

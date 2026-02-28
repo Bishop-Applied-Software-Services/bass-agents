@@ -40,18 +40,18 @@ const MAX_LOG_ENTRIES = 10000;
 /**
  * Log a query to the query log file
  * 
- * @param project - Project name
+ * @param memoryRoot - Local durable-memory root
+ * @param project - Project name for reporting
  * @param filters - Query filters used
  * @param resultCount - Number of results returned
- * @param workspaceRoot - Workspace root directory
  */
 export async function logQuery(
+  memoryRoot: string,
   project: string,
   filters: MemoryQueryFilters,
-  resultCount: number,
-  workspaceRoot: string
+  resultCount: number
 ): Promise<void> {
-  const logPath = getQueryLogPath(project, workspaceRoot);
+  const logPath = getQueryLogPath(memoryRoot);
   
   // Ensure directory exists
   await fs.mkdir(path.dirname(logPath), { recursive: true });
@@ -77,17 +77,16 @@ export async function logQuery(
 /**
  * Analyze query patterns from log file
  * 
- * @param project - Project name
- * @param workspaceRoot - Workspace root directory
+ * @param memoryRoot - Local durable-memory root
  * @param dateRange - Optional date range filter
  * @returns Query pattern statistics
  */
 export async function analyzeQueryPatterns(
-  project: string,
-  workspaceRoot: string,
+  memoryRoot: string,
+  _project: string,
   dateRange?: { start_date?: string; end_date?: string }
 ): Promise<QueryPatternStats> {
-  const logPath = getQueryLogPath(project, workspaceRoot);
+  const logPath = getQueryLogPath(memoryRoot);
   
   // Check if log file exists
   try {
@@ -170,8 +169,8 @@ export async function analyzeQueryPatterns(
 /**
  * Get the path to the query log file
  */
-function getQueryLogPath(project: string, workspaceRoot: string): string {
-  return path.join(workspaceRoot, 'ai-memory', project, '.query-log.jsonl');
+function getQueryLogPath(memoryRoot: string): string {
+  return path.join(memoryRoot, '.query-log.jsonl');
 }
 
 /**

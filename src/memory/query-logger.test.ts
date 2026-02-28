@@ -12,11 +12,13 @@ import * as os from 'os';
 describe('Query Logger', () => {
   let testDir: string;
   let workspaceRoot: string;
+  let memoryRoot: string;
 
   beforeEach(async () => {
     // Create temporary test directory
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'query-logger-test-'));
     workspaceRoot = testDir;
+    memoryRoot = path.join(workspaceRoot, 'ai-memory');
   });
 
   afterEach(async () => {
@@ -32,9 +34,9 @@ describe('Query Logger', () => {
         subject: ['test-subject'],
       };
 
-      await logQuery(project, filters, 5, workspaceRoot);
+      await logQuery(memoryRoot, project, filters, 5);
 
-      const logPath = path.join(workspaceRoot, 'ai-memory', project, '.query-log.jsonl');
+      const logPath = path.join(memoryRoot, '.query-log.jsonl');
       const content = await fs.readFile(logPath, 'utf-8');
       const lines = content.trim().split('\n');
 
@@ -49,10 +51,10 @@ describe('Query Logger', () => {
     it('should append multiple queries', async () => {
       const project = 'test-project';
 
-      await logQuery(project, { section: ['decisions'] }, 3, workspaceRoot);
-      await logQuery(project, { section: ['state'] }, 2, workspaceRoot);
+      await logQuery(memoryRoot, project, { section: ['decisions'] }, 3);
+      await logQuery(memoryRoot, project, { section: ['state'] }, 2);
 
-      const logPath = path.join(workspaceRoot, 'ai-memory', project, '.query-log.jsonl');
+      const logPath = path.join(memoryRoot, '.query-log.jsonl');
       const content = await fs.readFile(logPath, 'utf-8');
       const lines = content.trim().split('\n');
 
@@ -62,7 +64,7 @@ describe('Query Logger', () => {
 
   describe('analyzeQueryPatterns', () => {
     it('should return empty stats for non-existent log', async () => {
-      const stats = await analyzeQueryPatterns('non-existent', workspaceRoot);
+      const stats = await analyzeQueryPatterns(memoryRoot, 'non-existent');
 
       expect(stats.total_queries).toBe(0);
       expect(stats.most_queried_subjects).toEqual([]);
@@ -73,12 +75,12 @@ describe('Query Logger', () => {
       const project = 'test-project';
 
       // Log some queries
-      await logQuery(project, { subject: ['subject-1'] }, 5, workspaceRoot);
-      await logQuery(project, { subject: ['subject-1'] }, 3, workspaceRoot);
-      await logQuery(project, { subject: ['subject-2'] }, 2, workspaceRoot);
-      await logQuery(project, { scope: ['repo'] }, 1, workspaceRoot);
+      await logQuery(memoryRoot, project, { subject: ['subject-1'] }, 5);
+      await logQuery(memoryRoot, project, { subject: ['subject-1'] }, 3);
+      await logQuery(memoryRoot, project, { subject: ['subject-2'] }, 2);
+      await logQuery(memoryRoot, project, { scope: ['repo'] }, 1);
 
-      const stats = await analyzeQueryPatterns(project, workspaceRoot);
+      const stats = await analyzeQueryPatterns(memoryRoot, project);
 
       expect(stats.total_queries).toBe(4);
       expect(stats.most_queried_subjects).toEqual([
@@ -94,7 +96,7 @@ describe('Query Logger', () => {
       const project = 'test-project';
 
       // Create log file with entries at different times
-      const logPath = path.join(workspaceRoot, 'ai-memory', project, '.query-log.jsonl');
+      const logPath = path.join(memoryRoot, '.query-log.jsonl');
       await fs.mkdir(path.dirname(logPath), { recursive: true });
 
       const entries = [
@@ -105,7 +107,7 @@ describe('Query Logger', () => {
 
       await fs.writeFile(logPath, entries.map(e => JSON.stringify(e)).join('\n') + '\n');
 
-      const stats = await analyzeQueryPatterns(project, workspaceRoot, {
+      const stats = await analyzeQueryPatterns(memoryRoot, project, {
         start_date: '2024-01-10T00:00:00Z',
         end_date: '2024-01-20T00:00:00Z',
       });
@@ -117,7 +119,7 @@ describe('Query Logger', () => {
       const project = 'test-project';
 
       // Log queries on different days
-      const logPath = path.join(workspaceRoot, 'ai-memory', project, '.query-log.jsonl');
+      const logPath = path.join(memoryRoot, '.query-log.jsonl');
       await fs.mkdir(path.dirname(logPath), { recursive: true });
 
       const entries = [
@@ -128,7 +130,7 @@ describe('Query Logger', () => {
 
       await fs.writeFile(logPath, entries.map(e => JSON.stringify(e)).join('\n') + '\n');
 
-      const stats = await analyzeQueryPatterns(project, workspaceRoot);
+      const stats = await analyzeQueryPatterns(memoryRoot, project);
 
       expect(stats.query_frequency_over_time).toEqual([
         { date: '2024-01-01', count: 2 },
