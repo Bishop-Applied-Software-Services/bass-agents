@@ -80,24 +80,20 @@ class MemoryAdapter {
         await fs.promises.mkdir(memoryPath, { recursive: true });
         // Initialize Beads repository
         try {
-            (0, child_process_1.execSync)('bd init', { cwd: memoryPath, encoding: 'utf-8' });
+            this.runBdCommand(['init', '--server', '--server-host', '127.0.0.1', '--server-port', '3306', '--server-user', 'root'], memoryPath, this.getBeadsDir(memoryPath));
         }
         catch (error) {
-            throw new Error(`Failed to initialize Beads repository: ${error}`);
+            const message = error instanceof Error ? error.message : String(error);
+            // In shared DB/server setups, bd may report that the workspace is already initialized.
+            // Treat this as non-fatal so init remains idempotent.
+            if (message.includes('already initialized')) {
+                // continue
+            }
+            else {
+                throw new Error(`Failed to initialize Beads repository: ${error}`);
+            }
         }
-        // Ensure no-db mode is explicitly enabled without clobbering existing config
-        const beadsConfigPath = path.join(memoryPath, '.beads', 'config.yaml');
-        let existingConfig = '';
-        try {
-            existingConfig = await fs.promises.readFile(beadsConfigPath, 'utf-8');
-        }
-        catch {
-            existingConfig = '';
-        }
-        if (!/^\s*no-db\s*:\s*true\b/m.test(existingConfig)) {
-            const updatedConfig = `${existingConfig.trimEnd()}\nno-db: true\n`;
-            await fs.promises.writeFile(beadsConfigPath, updatedConfig, 'utf-8');
-        }
+        // Do not force no-db mode: default Beads setup should remain DB-backed when available.
         // Create .config.json with project metadata
         const config = {
             project,
@@ -177,7 +173,7 @@ class MemoryAdapter {
                 '--labels',
                 labels.join(','),
                 '--silent',
-            ], memoryPath);
+            ], memoryPath, this.getBeadsDir(memoryPath));
             const issueId = this.extractIssueId(output);
             const duration = Date.now() - startTime;
             // Log concurrent write attempt for debugging (Requirement 12.4)
@@ -185,6 +181,7 @@ class MemoryAdapter {
             this.logConcurrentWrite('create', project, issueId, entry.created_by, duration);
             // Invalidate statistics cache after write (Requirement 22.9)
             statistics_cache_1.statisticsCache.invalidate(project);
+            await this.syncJsonlExport(memoryPath);
             return issueId;
         }
         catch (error) {
@@ -514,6 +511,25 @@ class MemoryAdapter {
      * Read all issues from .beads/issues.jsonl
      */
     async readAllIssues(memoryPath) {
+        const beadsDir = this.getBeadsDir(memoryPath);
+        try {
+            const output = this.runBdCommand(['list', '--json'], memoryPath, beadsDir);
+            const parsed = JSON.parse(output);
+            if (Array.isArray(parsed)) {
+                return parsed.map((data) => ({
+                    id: data.id,
+                    title: data.title || '',
+                    body: data.body || data.description || '',
+                    labels: data.labels || [],
+                    created_by: data.created_by || data.createdBy || '',
+                    created_at: data.created_at || data.createdAt || new Date().toISOString(),
+                    updated_at: data.updated_at || data.updatedAt || new Date().toISOString(),
+                }));
+            }
+        }
+        catch {
+            // Fall through to JSONL read path.
+        }
         const issuesPath = path.join(memoryPath, '.beads', 'issues.jsonl');
         try {
             const content = await fs.promises.readFile(issuesPath, 'utf-8');
@@ -863,7 +879,7 @@ class MemoryAdapter {
     }
     /**
      * Ensure memory is initialized for a project.
-     * Auto-initializes if not already initialized (Requirement 9.6).
+     * Standard behavior: fail fast with setup guidance if not initialized.
      */
     async ensureInitialized(project, memoryPath) {
         const configPath = path.join(memoryPath, '.config.json');
@@ -871,8 +887,10 @@ class MemoryAdapter {
             await fs.promises.access(configPath, fs.constants.F_OK);
         }
         catch {
-            // Not initialized, auto-initialize
-            await this.init(project);
+            throw new Error(`Memory project "${project}" is not initialized at ${memoryPath}.\n` +
+                `Run: bass-agents memory init ${project}\n` +
+                `Initialize Beads in the primary repo checkout with: bd init\n` +
+                `For additional working directories, use: bd worktree create <path> --branch <branch-name>`);
         }
     }
     /**
@@ -1100,7 +1118,8 @@ class MemoryAdapter {
                 body,
                 '--set-labels',
                 labels.join(','),
-            ], memoryPath);
+            ], memoryPath, this.getBeadsDir(memoryPath));
+            await this.syncJsonlExport(memoryPath);
         }
         catch (error) {
             if (!this.shouldFallbackToJsonl(error)) {
@@ -1154,12 +1173,27 @@ class MemoryAdapter {
         }
         return Array.from(evidenceMap.values());
     }
-    runBdCommand(args, cwd) {
+    runBdCommand(args, cwd, beadsDir) {
+        const env = beadsDir
+            ? { ...process.env, BEADS_DIR: beadsDir }
+            : process.env;
         return (0, child_process_1.execFileSync)('bd', args, {
             cwd,
+            env,
             encoding: 'utf-8',
             stdio: ['ignore', 'pipe', 'pipe'],
         });
+    }
+    async syncJsonlExport(memoryPath) {
+        try {
+            this.runBdCommand(['sync'], memoryPath, this.getBeadsDir(memoryPath));
+        }
+        catch {
+            // Best-effort export sync; query/create should not fail on sync errors.
+        }
+    }
+    getBeadsDir(memoryPath) {
+        return path.join(memoryPath, '.beads');
     }
     extractIssueId(output) {
         const trimmed = output.trim();
@@ -1167,10 +1201,10 @@ class MemoryAdapter {
             throw new Error('Beads returned empty output when creating issue');
         }
         // Current bd --silent usually returns only the ID on stdout.
-        if (/^[a-z0-9][a-z0-9-]*-[a-f0-9]+$/i.test(trimmed)) {
+        if (/^[a-z0-9][a-z0-9-]*-[a-z0-9]+$/i.test(trimmed)) {
             return trimmed;
         }
-        const match = trimmed.match(/[a-z0-9][a-z0-9-]*-[a-f0-9]+/i);
+        const match = trimmed.match(/[a-z0-9][a-z0-9-]*-[a-z0-9]+/i);
         if (!match) {
             throw new Error(`Failed to extract issue ID from bd create output: ${output}`);
         }

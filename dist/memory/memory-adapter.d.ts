@@ -236,7 +236,7 @@ export declare class MemoryAdapter {
     private validateWorkspaceBoundary;
     /**
      * Ensure memory is initialized for a project.
-     * Auto-initializes if not already initialized (Requirement 9.6).
+     * Standard behavior: fail fast with setup guidance if not initialized.
      */
     private ensureInitialized;
     /**
@@ -277,6 +277,8 @@ export declare class MemoryAdapter {
      */
     private mergeEvidence;
     private runBdCommand;
+    private syncJsonlExport;
+    private getBeadsDir;
     private extractIssueId;
     private shouldFallbackToJsonl;
     private createIssueJsonlFallback;

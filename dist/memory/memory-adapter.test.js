@@ -99,7 +99,7 @@ const memory_adapter_1 = require("./memory-adapter");
             };
             const memoryId = await adapter.create(testProject, entry);
             (0, vitest_1.expect)(memoryId).toBeDefined();
-            (0, vitest_1.expect)(memoryId).toMatch(/^[a-z0-9][a-z0-9-]*-[a-f0-9]+$/);
+            (0, vitest_1.expect)(memoryId).toMatch(/^[a-z0-9][a-z0-9-]*-[a-z0-9]+$/);
         });
         (0, vitest_1.it)('should reject entry with validation errors', async () => {
             const invalidEntry = {
