@@ -193,22 +193,55 @@ discover_session_path() {
   fi
 }
 
+has_tool_args() {
+  [[ ${#tool_args[@]} -gt 0 ]]
+}
+
+prepend_tool_args() {
+  local prefix=("$@")
+  if has_tool_args; then
+    tool_args=("${prefix[@]}" "${tool_args[@]}")
+  else
+    tool_args=("${prefix[@]}")
+  fi
+}
+
+quoted_tool_command() {
+  local quoted=""
+  quoted="$(printf '%q ' "$tool")"
+  if has_tool_args; then
+    quoted+="$(printf '%q ' "${tool_args[@]}")"
+  fi
+  quoted="${quoted% }"
+  printf "%s" "$quoted"
+}
+
+run_tool() {
+  if has_tool_args; then
+    "$tool" "${tool_args[@]}"
+  else
+    "$tool"
+  fi
+}
+
 # Expose canonical instructions path for future tool integrations.
 export BASS_AGENTS_INSTRUCTIONS_PATH="$repo_root/CLAUDE.md"
 
 tool_args=("$@")
-if [[ "$tool" == "claude" && "${#tool_args[@]}" -gt 0 && "${tool_args[0]}" == "exec" ]]; then
+if [[ "$tool" == "claude" ]] && has_tool_args && [[ "${tool_args[0]}" == "exec" ]]; then
   # Codex supports "exec"; map it to Claude's one-shot print mode.
   tool_args=("${tool_args[@]:1}")
   has_print_flag=0
-  for arg in "${tool_args[@]}"; do
-    if [[ "$arg" == "-p" || "$arg" == "--print" ]]; then
-      has_print_flag=1
-      break
-    fi
-  done
+  if has_tool_args; then
+    for arg in "${tool_args[@]}"; do
+      if [[ "$arg" == "-p" || "$arg" == "--print" ]]; then
+        has_print_flag=1
+        break
+      fi
+    done
+  fi
   if [[ "$has_print_flag" -eq 0 ]]; then
-    tool_args=(--print "${tool_args[@]}")
+    prepend_tool_args --print
   fi
   echo "[bass-agents] normalized claude args: exec -> --print"
 fi
@@ -220,34 +253,32 @@ if [[ "$tool" == "claude" && "$smoke_test" == "1" ]]; then
   has_session_persistence_flag=0
   has_disable_slash=0
   has_model=0
-  for arg in "${tool_args[@]}"; do
-    if [[ "$arg" == "--no-session-persistence" ]]; then
-      has_session_persistence_flag=1
-    fi
-    if [[ "$arg" == "--disable-slash-commands" ]]; then
-      has_disable_slash=1
-    fi
-    if [[ "$arg" == "--model" || "$arg" == --model=* ]]; then
-      has_model=1
-    fi
-  done
+  if has_tool_args; then
+    for arg in "${tool_args[@]}"; do
+      if [[ "$arg" == "--no-session-persistence" ]]; then
+        has_session_persistence_flag=1
+      fi
+      if [[ "$arg" == "--disable-slash-commands" ]]; then
+        has_disable_slash=1
+      fi
+      if [[ "$arg" == "--model" || "$arg" == --model=* ]]; then
+        has_model=1
+      fi
+    done
+  fi
   if [[ "$has_session_persistence_flag" -eq 0 ]]; then
-    tool_args=(--no-session-persistence "${tool_args[@]}")
+    prepend_tool_args --no-session-persistence
   fi
   if [[ "$has_disable_slash" -eq 0 ]]; then
-    tool_args=(--disable-slash-commands "${tool_args[@]}")
+    prepend_tool_args --disable-slash-commands
   fi
   if [[ "$has_model" -eq 0 ]]; then
-    tool_args=(--model sonnet "${tool_args[@]}")
+    prepend_tool_args --model sonnet
   fi
   echo "[bass-agents] smoke-test mode enabled for claude"
 fi
 
-launch_cmd="$tool"
-if [[ "${#tool_args[@]}" -gt 0 ]]; then
-  launch_cmd+=" $(printf '%q ' "${tool_args[@]}")"
-  launch_cmd="${launch_cmd% }"
-fi
+launch_cmd="$(quoted_tool_command)"
 echo "[bass-agents] launching: $launch_cmd"
 echo "[bass-agents] run log: $run_log"
 echo "[bass-agents] session reference id: $session_ref_id"
@@ -256,17 +287,21 @@ tool_exit=0
 if [[ -t 0 && -t 1 ]]; then
   if command -v script >/dev/null 2>&1; then
     if [[ "$(uname -s)" == "Darwin" ]]; then
-      script -q "$run_log" "$tool" "${tool_args[@]}" || tool_exit=$?
+      if has_tool_args; then
+        script -q "$run_log" "$tool" "${tool_args[@]}" || tool_exit=$?
+      else
+        script -q "$run_log" "$tool" || tool_exit=$?
+      fi
     else
-      cmd_quoted="$(printf '%q ' "$tool" "${tool_args[@]}")"
+      cmd_quoted="$(quoted_tool_command)"
       script -q -e -c "$cmd_quoted" "$run_log" || tool_exit=$?
     fi
   else
-    "$tool" "${tool_args[@]}" || tool_exit=$?
+    run_tool || tool_exit=$?
   fi
 else
   {
-    "$tool" "${tool_args[@]}"
+    run_tool
   } 2>&1 | tee "$run_log" || tool_exit=$?
 fi
 
