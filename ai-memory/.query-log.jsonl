@@ -1,2 +1,6 @@
 {"timestamp":"2026-02-22T22:36:53.477Z","project":"bass-agents","filters":{"status":["active"],"minConfidence":0.6,"limit":50},"result_count":0}
 {"timestamp":"2026-02-22T22:37:06.658Z","project":"bass-agents","filters":{"status":["active"],"minConfidence":0.6,"limit":50},"result_count":9}
+{"timestamp":"2026-02-28T23:22:56.410Z","project":"bass-agents","filters":{"section":["state"],"status":["active"],"minConfidence":0.6,"limit":50},"result_count":1}
+{"timestamp":"2026-02-28T23:22:56.468Z","project":"bass-agents","filters":{"section":["learnings"],"status":["active"],"minConfidence":0.6,"limit":50},"result_count":2}
+{"timestamp":"2026-02-28T23:22:56.516Z","project":"bass-agents","filters":{"section":["learnings"],"status":["active"],"minConfidence":0.6,"limit":50},"result_count":2}
+{"timestamp":"2026-02-28T23:23:40.475Z","project":"bass-agents","filters":{"section":["learnings"],"status":["active"],"minConfidence":0.6,"limit":50},"result_count":3}
