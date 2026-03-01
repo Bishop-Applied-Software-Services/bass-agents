@@ -187,6 +187,7 @@ Untracked files under `session-reviews/` are not disposable local noise.
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+- Use the skill /wrap-up (Claude) or $wrap-up (Codex).
 
 **MANDATORY WORKFLOW:**
 
