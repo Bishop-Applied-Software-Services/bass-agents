@@ -178,6 +178,12 @@ For more details, see README.md and docs/QUICKSTART.md.
 
 <!-- END BEADS INTEGRATION -->
 
+## Session Reviews (Always On)
+
+Untracked files under `session-reviews/` are not disposable local noise.
+
+- Do not ignore, discard, or leave behind `session-reviews/` files when shipping branch work. Just include any generated session review files automatically.
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
