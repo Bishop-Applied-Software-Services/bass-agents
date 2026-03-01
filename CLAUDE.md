@@ -202,7 +202,9 @@ Untracked files under `session-reviews/` are not disposable local noise.
 
 ## Landing the Plane (Session Completion)
 
+
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds and a PR is open (draft is OK).
+
 
 **MANDATORY WORKFLOW:**
 
