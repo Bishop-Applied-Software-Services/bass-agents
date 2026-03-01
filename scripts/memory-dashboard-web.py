@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -119,6 +121,7 @@ def load_memory_rows(memory_root: Path, project_name: str) -> List[Dict[str, Any
 
 
 def run_json_command(command: List[str], cwd: Path) -> Tuple[Any, str]:
+    command_label = shlex.join(command)
     try:
         completed = subprocess.run(
             command,
@@ -128,19 +131,19 @@ def run_json_command(command: List[str], cwd: Path) -> Tuple[Any, str]:
             text=True,
         )
     except FileNotFoundError:
-        return None, f"command not found: {command[0]}"
+        return None, f"{command_label}: command not found: {command[0]}"
     except subprocess.CalledProcessError as exc:
         message = (exc.stderr or exc.stdout or "").strip() or str(exc)
-        return None, message
+        return None, f"{command_label}: {message}"
 
     raw = (completed.stdout or "").strip()
     if not raw:
-        return None, "empty response"
+        return None, f"{command_label}: empty response"
 
     try:
         return json.loads(raw), ""
     except json.JSONDecodeError as exc:
-        return None, f"invalid JSON: {exc}"
+        return None, f"{command_label}: invalid JSON: {exc}"
 
 
 def load_ticket_data(project_root: Path) -> Dict[str, Any]:
@@ -470,6 +473,10 @@ def main() -> int:
 
     memory_rows = load_memory_rows(memory_root, project_name)
     ticket_data = load_ticket_data(project_root)
+    if ticket_data["error"]:
+        print(f"Ticket data unavailable: {ticket_data['error']}", file=sys.stderr)
+        return 1
+
     generated_at = datetime.now(timezone.utc).isoformat()
     html = build_html(
         project_name,
