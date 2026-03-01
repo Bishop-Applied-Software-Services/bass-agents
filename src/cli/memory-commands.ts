@@ -860,28 +860,54 @@ async function displayWebDashboard(
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-  const output = execFileSync(
-    'python3',
-    [
-      scriptPath,
-      '--root',
-      context.memoryRoot,
-      '--project-root',
-      context.projectRoot,
-      '--out',
-      outputPath,
-    ],
-    {
-      cwd: context.projectRoot,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }
-  );
+  let output: string;
+  try {
+    output = execFileSync(
+      'python3',
+      [
+        scriptPath,
+        '--root',
+        context.memoryRoot,
+        '--project-root',
+        context.projectRoot,
+        '--out',
+        outputPath,
+      ],
+      {
+        cwd: context.projectRoot,
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+  } catch (error) {
+    throw new Error(extractExecOutput(error));
+  }
 
   if (output.trim()) {
     console.log(output.trim());
   }
   console.log(outputPath);
+}
+
+function extractExecOutput(error: unknown): string {
+  if (!error || typeof error !== 'object') {
+    return String(error);
+  }
+
+  const execError = error as { stderr?: string | Buffer; stdout?: string | Buffer; message?: string };
+  for (const stream of [execError.stderr, execError.stdout]) {
+    if (typeof stream === 'string' && stream.trim()) {
+      return stream.trim();
+    }
+    if (Buffer.isBuffer(stream)) {
+      const text = stream.toString('utf-8').trim();
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  return execError.message || String(error);
 }
 
 async function handleStats(

@@ -22,8 +22,22 @@ const context: ResolvedProjectContext = {
 };
 
 let adapter: MockAdapter;
+const execFileSyncMock = vi.fn();
+const mkdirSyncMock = vi.fn();
 
 async function loadCli() {
+  vi.doMock('fs', async () => {
+    const actual = await vi.importActual<typeof import('fs')>('fs');
+    return {
+      ...actual,
+      mkdirSync: mkdirSyncMock,
+    };
+  });
+
+  vi.doMock('child_process', () => ({
+    execFileSync: execFileSyncMock,
+  }));
+
   vi.doMock('../memory/memory-adapter', () => ({
     MemoryAdapter: vi.fn(() => adapter),
   }));
@@ -43,6 +57,8 @@ describe('Memory CLI Commands', () => {
 
   beforeEach(() => {
     vi.resetModules();
+    execFileSyncMock.mockReset();
+    mkdirSyncMock.mockReset();
     adapter = {
       init: vi.fn().mockResolvedValue(undefined),
       create: vi.fn().mockResolvedValue('bass-agents-new'),
@@ -239,5 +255,41 @@ describe('Memory CLI Commands', () => {
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('bass-agents-xyz'));
     expect(logSpy).toHaveBeenCalledWith('\nFound: 1 matching entries');
+  });
+
+  it('surfaces web dashboard build failures as CLI errors', async () => {
+    const { main } = await loadCli();
+    const processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation(((code?: string | number | null | undefined) => {
+        throw new Error(`process.exit:${code ?? ''}`);
+      }) as never);
+
+    mkdirSyncMock.mockImplementation(() => undefined as never);
+
+    execFileSyncMock.mockImplementation(() => {
+      const error = new Error('Command failed');
+      (
+        error as Error & {
+          stderr?: string;
+        }
+      ).stderr = 'Ticket data unavailable: bd list failed';
+      throw error;
+    });
+
+    await expect(main(['dashboard', '--web'])).rejects.toThrow('process.exit:1');
+
+    expect(errorSpy).toHaveBeenCalledWith('Error:', 'Ticket data unavailable: bd list failed');
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      'python3',
+      expect.arrayContaining(['--root', context.memoryRoot, '--project-root', context.projectRoot]),
+      expect.objectContaining({
+        cwd: context.projectRoot,
+        encoding: 'utf-8',
+      })
+    );
+
+    processExitSpy.mockRestore();
   });
 });
