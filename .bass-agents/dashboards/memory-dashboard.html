@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project Memory Dashboard</title>
+  <style>
+    :root {
+      --bg: #eff3ea;
+      --panel: #fcfdf8;
+      --ink: #15212a;
+      --muted: #5e6d78;
+      --line: #d4e0d6;
+      --ticket: #8f2d56;
+      --memory: #2c7a5b;
+      --warn: #9b3d1f;
+      --good: #1f7a4f;
+      --mono: "IBM Plex Mono", Menlo, Consolas, monospace;
+      --sans: "Instrument Sans", "Avenir Next", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        radial-gradient(1200px 700px at 0% 0%, #efe2d8 0%, transparent 45%),
+        radial-gradient(1200px 700px at 100% 0%, #d8efe0 0%, transparent 42%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1280px;
+      margin: 24px auto 40px;
+      padding: 0 16px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .title {
+      margin: 0;
+      font-size: 2.2rem;
+      letter-spacing: -0.03em;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: .92rem;
+      margin-top: 6px;
+    }
+    .eyebrow {
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .section {
+      background: rgba(252, 253, 248, .85);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 14px;
+      backdrop-filter: blur(8px);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .card {
+      grid-column: span 3;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .k {
+      font-size: .78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 8px;
+    }
+    .v {
+      font-family: var(--mono);
+      font-size: 1.45rem;
+      font-weight: 700;
+    }
+    .mono { font-family: var(--mono); }
+    .warning {
+      margin-bottom: 12px;
+      background: #fff4e7;
+      border: 1px solid #e9c5a0;
+      color: #7d4a17;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: .9rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .88rem;
+    }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid #e5ede7;
+      padding: 7px 5px;
+      vertical-align: top;
+    }
+    th {
+      font-size: .73rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: .04em;
+    }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: .72rem;
+      font-weight: 600;
+      background: #e6f0ea;
+      color: #1c5a43;
+    }
+    .pill.ticket {
+      background: #f7dde5;
+      color: #7e2146;
+    }
+    @media (max-width: 900px) {
+      .card { grid-column: span 6; }
+    }
+    @media (max-width: 640px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .card { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <div class="eyebrow">Project Local Dashboard</div>
+        <h1 class="title">Operations + Durable Memory</h1>
+        <div id="pageMeta" class="meta"></div>
+      </div>
+      <div class="meta mono" id="rootMeta"></div>
+    </div>
+
+    <div id="ticketWarning" class="warning" hidden></div>
+
+    <section class="section">
+      <h2>Tracker</h2>
+      <div class="grid">
+        <div class="card"><div class="k">Issues</div><div class="v mono" id="kTicketTotal">0</div></div>
+        <div class="card"><div class="k">Open</div><div class="v mono" id="kTicketOpen">0</div></div>
+        <div class="card"><div class="k">In Progress</div><div class="v mono" id="kTicketInProgress">0</div></div>
+        <div class="card"><div class="k">Ready</div><div class="v mono" id="kTicketReady">0</div></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Updated</th><th>Status</th><th>P</th><th>Type</th><th>Title</th><th>ID</th>
+          </tr>
+        </thead>
+        <tbody id="ticketBody"></tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>Durable Memory</h2>
+      <div class="grid">
+        <div class="card"><div class="k">Entries</div><div class="v mono" id="kMemoryEntries">0</div></div>
+        <div class="card"><div class="k">Active</div><div class="v mono" id="kMemoryActive">0</div></div>
+        <div class="card"><div class="k">Updated Today</div><div class="v mono" id="kMemoryToday">0</div></div>
+        <div class="card"><div class="k">Avg Confidence</div><div class="v mono" id="kMemoryConf">0.0</div></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Updated</th><th>Section</th><th>Status</th><th>Confidence</th><th>Summary</th><th>ID</th>
+          </tr>
+        </thead>
+        <tbody id="memoryBody"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script>
+    const DATA = {"project_name": "bass-agents", "project_root": "/Users/jackbishop/dev/bass-agents", "memory_root": "/Users/jackbishop/dev/bass-agents/ai-memory", "memory_rows": [{"project": "bass-agents", "id": "bass-agents-305eefed73", "summary": "Wrap-up memory commands should run from the target repo root or use --project.", "section": "learnings", "status": "active", "kind": "other", "scope": "repo", "confidence": 0.9, "updated_at": "2026-02-28T23:23:18.143Z", "created_by": "wrap-up-skill", "evidence_count": 1}, {"project": "bass-agents", "id": "bass-agents-1ff3447f0c", "summary": "The memory CLI now supports project-local init, create, and supersede commands.", "section": "state", "status": "active", "kind": "other", "scope": "repo", "confidence": 0.95, "updated_at": "2026-02-28T23:23:18.128Z", "created_by": "wrap-up-skill", "evidence_count": 1}, {"project": "bass-agents", "id": "bass-agents-afb0bab8c8", "summary": "All memory entries must have valid section and kind fields", "section": "state", "status": "active", "kind": "invariant", "scope": "repo", "confidence": 0.98, "updated_at": "2026-02-22T22:36:54.462Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-8385bc8fff", "summary": "Use specific evidence types for better traceability", "section": "learnings", "status": "active", "kind": "other", "scope": "service:memory", "confidence": 0.87, "updated_at": "2026-02-22T22:36:54.380Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-27a0df1da2", "summary": "Run compaction weekly to remove superseded entries", "section": "learnings", "status": "active", "kind": "runbook_step", "scope": "service:memory", "confidence": 0.9, "updated_at": "2026-02-22T22:36:54.299Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-4ae9ce6b53", "summary": "Memory confidence should decay over time without validation", "section": "observations", "status": "draft", "kind": "hypothesis", "scope": "service:memory", "confidence": 0.65, "updated_at": "2026-02-22T22:36:54.217Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-2321096f3d", "summary": "Evidence URIs can become stale when files are moved", "section": "observations", "status": "active", "kind": "incident", "scope": "service:memory", "confidence": 0.82, "updated_at": "2026-02-22T22:36:54.136Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-eaf92df66c", "summary": "Memory queries complete in under 100ms for typical workloads", "section": "observations", "status": "active", "kind": "metric", "scope": "service:memory", "confidence": 0.78, "updated_at": "2026-02-22T22:36:54.054Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-31f6c565c1", "summary": "Support concurrent writes without data loss", "section": "decisions", "status": "active", "kind": "requirement", "scope": "service:memory", "confidence": 0.95, "updated_at": "2026-02-22T22:36:53.972Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-1c21a04ffc", "summary": "Implement memory system in TypeScript for type safety", "section": "decisions", "status": "active", "kind": "decision", "scope": "repo", "confidence": 0.85, "updated_at": "2026-02-22T22:36:53.891Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-85f4a7b6cc", "summary": "Use beads for memory persistence with JSONL format", "section": "decisions", "status": "active", "kind": "decision", "scope": "service:memory", "confidence": 0.88, "updated_at": "2026-02-22T22:36:53.809Z", "created_by": "test-script", "evidence_count": 2}, {"project": "bass-agents", "id": "bass-agents-78271b0351", "summary": "Use markdown-based agent definitions instead of JSON", "section": "decisions", "status": "active", "kind": "decision", "scope": "repo", "confidence": 0.92, "updated_at": "2026-02-22T22:36:53.727Z", "created_by": "test-script", "evidence_count": 2}], "tickets": {"rows": [{"id": "bass-agents-41y", "title": "Fail web dashboard build when ticket data cannot load", "status": "in_progress", "priority": 1, "issue_type": "bug", "updated_at": "2026-03-01T18:48:38Z"}, {"id": "bass-agents-xew", "title": "Record field note for project-local memory wrap-up", "status": "closed", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T23:27:48Z"}, {"id": "bass-agents-908", "title": "Initialize project-local memory earlier in repo setup", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T23:27:30Z"}, {"id": "bass-agents-9o5", "title": "Update durable-memory docs to project-local CLI syntax", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T23:27:06Z"}, {"id": "bass-agents-9vv", "title": "Update wrap-up skill for project-local memory CLI", "status": "closed", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T23:20:29Z"}, {"id": "bass-agents-1jz", "title": "Add durable-memory write commands to the memory CLI", "status": "closed", "priority": 2, "issue_type": "feature", "updated_at": "2026-02-28T22:55:10Z"}, {"id": "bass-agents-plc", "title": "Prompt for custom-agent installation during init", "status": "closed", "priority": 1, "issue_type": "feature", "updated_at": "2026-02-28T22:24:18Z"}, {"id": "bass-agents-6v2", "title": "Add installer command for generated Claude/Codex agent bundles", "status": "closed", "priority": 1, "issue_type": "feature", "updated_at": "2026-02-28T22:18:48Z"}, {"id": "bass-agents-anc", "title": "Generate Codex multi-agent exports during init", "status": "closed", "priority": 1, "issue_type": "feature", "updated_at": "2026-02-28T22:14:14Z"}, {"id": "bass-agents-oyv", "title": "Exclude .claude/worktrees from Vitest discovery", "status": "closed", "priority": 2, "issue_type": "bug", "updated_at": "2026-02-28T22:14:09Z"}, {"id": "bass-agents-8on", "title": "Generate project-local custom-agent exports during init", "status": "closed", "priority": 1, "issue_type": "feature", "updated_at": "2026-02-28T22:02:15Z"}, {"id": "bass-agents-kxk", "title": "Add project-local durable-memory opt-in to init and dashboards", "status": "closed", "priority": 1, "issue_type": "feature", "updated_at": "2026-02-28T21:36:05Z"}, {"id": "bass-agents-kxk.6", "title": "Add isolation tests, docs, and bass-agents one-time data flatten", "status": "closed", "priority": 1, "issue_type": "task", "updated_at": "2026-02-28T21:36:02Z"}, {"id": "bass-agents-kxk.5", "title": "Simplify memory CLI and integrations to current-project defaults", "status": "closed", "priority": 1, "issue_type": "task", "updated_at": "2026-02-28T21:35:59Z"}, {"id": "bass-agents-kxk.4", "title": "Update init flow for durable-memory opt-in and local setup", "status": "closed", "priority": 1, "issue_type": "task", "updated_at": "2026-02-28T21:35:55Z"}, {"id": "bass-agents-kxk.3", "title": "Refactor durable-memory storage APIs to use local ai-memory root", "status": "closed", "priority": 1, "issue_type": "task", "updated_at": "2026-02-28T21:35:53Z"}, {"id": "bass-agents-kxk.2", "title": "Add ProjectContext and project-local bass-agents config resolution", "status": "closed", "priority": 1, "issue_type": "task", "updated_at": "2026-02-28T21:35:50Z"}, {"id": "bass-agents-kxk.1", "title": "Scope dashboards to local project data only", "status": "closed", "priority": 1, "issue_type": "task", "updated_at": "2026-02-28T21:35:47Z"}, {"id": "bass-agents-ela", "title": "Handle Dolt 'failed to open database' errors in MemoryAdapter write fallback", "status": "closed", "priority": 2, "issue_type": "bug", "updated_at": "2026-02-28T21:35:44Z"}, {"id": "bass-agents-szd", "title": "Fix durable-memory branch quality gate failures", "status": "closed", "priority": 1, "issue_type": "bug", "updated_at": "2026-02-28T21:35:27Z"}, {"id": "bass-agents-bgs", "title": "Add unified Beads + durable-memory dashboard", "status": "closed", "priority": 2, "issue_type": "feature", "updated_at": "2026-02-28T20:33:10Z"}, {"id": "bass-agents-w69", "title": "Require open-PR state check in wrap-up skill", "status": "closed", "priority": 1, "issue_type": "bug", "updated_at": "2026-02-28T19:54:37Z"}, {"id": "bass-agents-jgj", "title": "Handle empty tool args in run-with-bass-agents", "status": "closed", "priority": 1, "issue_type": "bug", "updated_at": "2026-02-28T19:44:09Z"}, {"id": "bass-agents-2rf", "title": "Harden durable-memory tests for Dolt-unavailable environments", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T19:33:17Z"}, {"id": "bass-agents-qek", "title": "Align ai-context with memory schemas and enforce memory provenance", "status": "closed", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T19:29:37Z"}, {"id": "bass-agents-5jm", "title": "Clarify direct durable-memory write policy", "status": "closed", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T19:22:44Z"}, {"id": "bass-agents-wbm", "title": "Stop tracking dist build artifacts", "status": "closed", "priority": 2, "issue_type": "chore", "updated_at": "2026-02-28T18:28:08Z"}, {"id": "bass-agents-s8t", "title": "Fix agtrace multi-stream session review parsing", "status": "closed", "priority": 1, "issue_type": "bug", "updated_at": "2026-02-28T18:08:20Z"}, {"id": "bass-agents-0ga", "title": "Improve Claude ccusage session matching in review-session", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-28T18:08:14Z"}, {"id": "bass-agents-txt", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:47Z"}, {"id": "bass-agents-2gs", "title": "Auth requirements", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:46Z"}, {"id": "bass-agents-2kk", "title": "Updated auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:46Z"}, {"id": "bass-agents-ctt", "title": "Use JWT", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:46Z"}, {"id": "bass-agents-nq7", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:46Z"}, {"id": "bass-agents-xg4", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:46Z"}, {"id": "bass-agents-2sd", "title": "Performance metric", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:45Z"}, {"id": "bass-agents-3t1", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:45Z"}, {"id": "bass-agents-97h", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:45Z"}, {"id": "bass-agents-osd", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:45Z"}, {"id": "bass-agents-qz2", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:45Z"}, {"id": "bass-agents-3hy", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:44Z"}, {"id": "bass-agents-608", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:44Z"}, {"id": "bass-agents-jhk", "title": "Old auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:44Z"}, {"id": "bass-agents-yu6", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:44Z"}, {"id": "bass-agents-7sh", "title": "Entry 2", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:43Z"}, {"id": "bass-agents-efh", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:43Z"}, {"id": "bass-agents-erv", "title": "Entry 1", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:43Z"}, {"id": "bass-agents-fga", "title": "Main entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:43Z"}, {"id": "bass-agents-fv2", "title": "Test summary", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:43Z"}, {"id": "bass-agents-2iv", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:42Z"}, {"id": "bass-agents-cfo", "title": "Repo decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:42Z"}, {"id": "bass-agents-dkb", "title": "Low confidence", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:42Z"}, {"id": "bass-agents-q8i", "title": "High confidence", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:42Z"}, {"id": "bass-agents-wcq", "title": "Service decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:42Z"}, {"id": "bass-agents-y21", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:42Z"}, {"id": "bass-agents-a44", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:41Z"}, {"id": "bass-agents-dqn", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:41Z"}, {"id": "bass-agents-ozj", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:41Z"}, {"id": "bass-agents-van", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:41Z"}, {"id": "bass-agents-2kp", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:40Z"}, {"id": "bass-agents-35s", "title": "Use JWT", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:23Z"}, {"id": "bass-agents-3yy", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:23Z"}, {"id": "bass-agents-80i", "title": "Auth requirements", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:23Z"}, {"id": "bass-agents-yko", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:23Z"}, {"id": "bass-agents-0gg", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:22Z"}, {"id": "bass-agents-1q2", "title": "Updated auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:22Z"}, {"id": "bass-agents-r5o", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:22Z"}, {"id": "bass-agents-u37", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:22Z"}, {"id": "bass-agents-4pc", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:21Z"}, {"id": "bass-agents-awn", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:21Z"}, {"id": "bass-agents-mqe", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:21Z"}, {"id": "bass-agents-vib", "title": "Performance metric", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:21Z"}, {"id": "bass-agents-wfl", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:21Z"}, {"id": "bass-agents-0i0", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:20Z"}, {"id": "bass-agents-4cz", "title": "Old auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:20Z"}, {"id": "bass-agents-4pj", "title": "Entry 1", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:20Z"}, {"id": "bass-agents-8bn", "title": "Main entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:20Z"}, {"id": "bass-agents-8ny", "title": "Entry 2", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:20Z"}, {"id": "bass-agents-8ma", "title": "Test summary", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:19Z"}, {"id": "bass-agents-fty", "title": "Service decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:19Z"}, {"id": "bass-agents-jse", "title": "Repo decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:19Z"}, {"id": "bass-agents-qgn", "title": "Low confidence", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:19Z"}, {"id": "bass-agents-y2h", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:19Z"}, {"id": "bass-agents-0wu", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:18Z"}, {"id": "bass-agents-3z1", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:18Z"}, {"id": "bass-agents-bxp", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:18Z"}, {"id": "bass-agents-n2j", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:18Z"}, {"id": "bass-agents-xtm", "title": "High confidence", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:18Z"}, {"id": "bass-agents-5b9", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:17Z"}, {"id": "bass-agents-c8s", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:17Z"}, {"id": "bass-agents-g0g", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:31:17Z"}, {"id": "bass-agents-kgb", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:53Z"}, {"id": "bass-agents-32j", "title": "Use JWT", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:52Z"}, {"id": "bass-agents-fsv", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:52Z"}, {"id": "bass-agents-qk8", "title": "Auth requirements", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:52Z"}, {"id": "bass-agents-zb2", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:52Z"}, {"id": "bass-agents-1zr", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:51Z"}, {"id": "bass-agents-38x", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:51Z"}, {"id": "bass-agents-4ur", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:51Z"}, {"id": "bass-agents-shw", "title": "Updated auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:51Z"}, {"id": "bass-agents-4pr", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:50Z"}, {"id": "bass-agents-ba7", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:50Z"}, {"id": "bass-agents-igf", "title": "Performance metric", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:50Z"}, {"id": "bass-agents-q1p", "title": "Old auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:50Z"}, {"id": "bass-agents-zvp", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:50Z"}, {"id": "bass-agents-2cs", "title": "Main entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:49Z"}, {"id": "bass-agents-4jp", "title": "Entry 1", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:49Z"}, {"id": "bass-agents-4lo", "title": "Entry 2", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:49Z"}, {"id": "bass-agents-fa0", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:49Z"}, {"id": "bass-agents-oef", "title": "Test entry", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:49Z"}, {"id": "bass-agents-4h1", "title": "Service decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:48Z"}, {"id": "bass-agents-8k4", "title": "Test summary", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:48Z"}, {"id": "bass-agents-98x", "title": "High confidence", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:48Z"}, {"id": "bass-agents-aj8", "title": "Low confidence", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:48Z"}, {"id": "bass-agents-myd", "title": "Repo decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:48Z"}, {"id": "bass-agents-n5t", "title": "Performance observation", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:48Z"}, {"id": "bass-agents-1o3", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:47Z"}, {"id": "bass-agents-74f", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:47Z"}, {"id": "bass-agents-c3s", "title": "Auth decision", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:47Z"}, {"id": "bass-agents-qtg", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:47Z"}, {"id": "bass-agents-wgc", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:47Z"}, {"id": "bass-agents-dmi", "title": "Use JWT for authentication", "status": "open", "priority": 2, "issue_type": "task", "updated_at": "2026-02-24T01:30:46Z"}], "ready_ids": ["bass-agents-908", "bass-agents-9o5", "bass-agents-2rf", "bass-agents-0ga", "bass-agents-txt", "bass-agents-2gs", "bass-agents-2kk", "bass-agents-ctt", "bass-agents-nq7", "bass-agents-xg4"], "error": ""}, "generated_at": "2026-03-01T19:16:11.659269+00:00"};
+    const ticketRows = (DATA.tickets && DATA.tickets.rows) || [];
+    const readyIds = new Set(((DATA.tickets && DATA.tickets.ready_ids) || []).map(String));
+    const memoryRows = DATA.memory_rows || [];
+    const today = String(DATA.generated_at || '').slice(0, 10);
+    const escMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => escMap[ch]);
+    const fmtInt = (n) => new Intl.NumberFormat().format(Number(n || 0));
+    const fmt1 = (n) => Number(n || 0).toFixed(1);
+    const ts = (value) => esc(String(value || '').replace('T', ' ').slice(0, 19));
+
+    document.getElementById('pageMeta').textContent =
+      `${esc(DATA.project_name)} | ${fmtInt(ticketRows.length)} tickets | ${fmtInt(memoryRows.length)} memory entries | generated ${esc(DATA.generated_at)}`;
+    document.getElementById('rootMeta').textContent =
+      `${esc(DATA.project_root)}`;
+
+    if (DATA.tickets && DATA.tickets.error) {
+      const warning = document.getElementById('ticketWarning');
+      warning.hidden = false;
+      warning.textContent = `Ticket data unavailable: ${DATA.tickets.error}`;
+    }
+
+    const ticketOpen = ticketRows.filter((row) => row.status !== 'closed');
+    document.getElementById('kTicketTotal').textContent = fmtInt(ticketRows.length);
+    document.getElementById('kTicketOpen').textContent = fmtInt(ticketOpen.length);
+    document.getElementById('kTicketInProgress').textContent = fmtInt(ticketRows.filter((row) => row.status === 'in_progress').length);
+    document.getElementById('kTicketReady').textContent = fmtInt(ticketRows.filter((row) => readyIds.has(String(row.id))).length);
+
+    document.getElementById('ticketBody').innerHTML = ticketRows.slice(0, 20).map((row) => `
+      <tr>
+        <td class="mono">${ts(row.updated_at)}</td>
+        <td><span class="pill ticket">${esc(row.status)}</span></td>
+        <td class="mono">${esc(row.priority)}</td>
+        <td>${esc(row.issue_type)}</td>
+        <td>${esc(row.title)}</td>
+        <td class="mono">${esc(row.id)}</td>
+      </tr>
+    `).join('');
+
+    const activeMemory = memoryRows.filter((row) => row.status === 'active');
+    const averageConfidence = memoryRows.length
+      ? memoryRows.reduce((sum, row) => sum + Number(row.confidence || 0), 0) / memoryRows.length
+      : 0;
+    document.getElementById('kMemoryEntries').textContent = fmtInt(memoryRows.length);
+    document.getElementById('kMemoryActive').textContent = fmtInt(activeMemory.length);
+    document.getElementById('kMemoryToday').textContent = fmtInt(memoryRows.filter((row) => String(row.updated_at || '').slice(0, 10) === today).length);
+    document.getElementById('kMemoryConf').textContent = fmt1(averageConfidence);
+
+    document.getElementById('memoryBody').innerHTML = memoryRows.slice(0, 30).map((row) => `
+      <tr>
+        <td class="mono">${ts(row.updated_at)}</td>
+        <td>${esc(row.section)}</td>
+        <td><span class="pill">${esc(row.status)}</span></td>
+        <td class="mono">${fmt1(row.confidence)}</td>
+        <td>${esc(row.summary)}</td>
+        <td class="mono">${esc(row.id)}</td>
+      </tr>
+    `).join('');
+  </script>
+</body>
+</html>
