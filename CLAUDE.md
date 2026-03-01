@@ -182,9 +182,7 @@ For more details, see README.md and docs/QUICKSTART.md.
 
 Untracked files under `session-reviews/` are not disposable local noise.
 
-- Always review untracked files in `session-reviews/` during a session.
-- If they were produced by the work for the current feature branch, add and commit them with that branch.
-- Do not ignore, discard, or leave behind relevant `session-reviews/` files when shipping branch work.
+- Do not ignore, discard, or leave behind `session-reviews/` files when shipping branch work. Just include any generated session review files automatically.
 
 ## Landing the Plane (Session Completion)
 
