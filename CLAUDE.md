@@ -8,7 +8,8 @@ Portable agent definitions and agentic workflows. Agent files live in `agents/` 
 - `workflows/` — Pipeline definitions
 - `schemas/` — JSON Schema contracts (AgentTask, AgentResult)
 - `field-notes/` — Deployment learnings and feedback loop
-- `bass-agents-spec-v0.md` — Full specification
+- `bass-agents-spec-v0.md` — Full specification (may need updating to v1, v2, etc)
+- `ai-memory/` - Durable memory powered by Beads.
 
 ## Field Notes
 
@@ -184,10 +185,26 @@ Untracked files under `session-reviews/` are not disposable local noise.
 
 - Do not ignore, discard, or leave behind `session-reviews/` files when shipping branch work. Just include any generated session review files automatically.
 
+## Session Start (Mandatory)
+
+**At the start of every new session**, you MUST do the setup below before substantive work begins.
+
+**MANDATORY STARTUP WORKFLOW:**
+
+1. **Prompt immediately** - Ask to create a new feature branch and a new worktree for the session
+2. **Create isolated workspace** - Create and switch to the new feature branch and dedicated worktree before making changes
+3. **Stay current with `main`** - Periodically pull the latest changes from `main` during the session so the branch does not drift
+
+**CRITICAL RULES:**
+- Do not start substantive implementation work on `main`
+- Do not reuse an old feature branch/worktree for a new session unless the user explicitly asks for it
+- If the session stays open for a while or before risky changes, pull the latest changes from `main` again
+
 ## Landing the Plane (Session Completion)
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-- Use the skill /wrap-up (Claude) or $wrap-up (Codex).
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds and a PR is open (draft is OK).
+
 
 **MANDATORY WORKFLOW:**
 
@@ -206,7 +223,7 @@ Untracked files under `session-reviews/` are not disposable local noise.
 7. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
+- Work is NOT complete until `git push` succeeds and a PR is open (draft is OK)
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
