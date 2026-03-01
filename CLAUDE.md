@@ -179,11 +179,12 @@ For more details, see README.md and docs/QUICKSTART.md.
 
 <!-- END BEADS INTEGRATION -->
 
-## Session Reviews (Always On)
+## Session Reviews (Ignored)
 
-Untracked files under `session-reviews/` are not disposable local noise.
+`session-reviews/` is local generated output and should stay gitignored.
 
-- Do not ignore, discard, or leave behind `session-reviews/` files when shipping branch work. Just include any generated session review files automatically.
+- Do not commit `session-reviews/` files or rely on them for shared handoff state.
+- If a session review contains something worth preserving, capture the durable takeaway in `field-notes/`, `bd`, or another tracked document.
 
 ## Session Start (Mandatory)
 
