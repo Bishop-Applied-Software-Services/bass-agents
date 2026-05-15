@@ -1,8 +1,10 @@
 # bass-agents
 
-Portable agent definitions and agentic workflows for building great software systems.
+Portable agent doctrine, role definitions, safety posture, and quality rubrics for native coding-agent harnesses.
 
-The repo source of truth is `agents/*.agent`. `bass-agents init` also exports project-local custom-agent bundles under `.bass-agents/custom-agents/`, including Claude Code-ready `AGENT.md` files, Codex multi-agent TOML config, and portable `.agent` copies for adapting into other tools.
+`bass-agents` is not an agent runtime. It is a native-first layer that makes Claude, Codex, and similar tools behave more consistently without replacing their subagents, approvals, memory, worktrees, or session systems.
+
+The repo source of truth is `agents/*.agent`. `bass-agents init` can export project-local custom-agent bundles under `.bass-agents/custom-agents/`, including Claude Code-ready `AGENT.md` files, Codex guidance/config material, and portable `.agent` copies for adapting into other tools.
 
 ## Directory Structure
 
@@ -41,19 +43,13 @@ git clone <repo-url> && cd bass-agents
 # Install dependencies
 npm install
 
-# Install Beads CLI (required for durable memory system)
-npm install -g @beads/bd
-# OR: brew install beads
-# OR: go install github.com/steveyegge/beads/cmd/bd@latest
-
-# Initialize project-local bass-agents state and generate custom-agent exports
+# Initialize project-local bass-agents state and generate native-agent exports
 ./bin/bass-agents init
 
 # Interactive init will also ask whether to install Claude/Codex custom agents now
 # (or pass --install-custom-agents / --no-install-custom-agents)
 
 # Verify
-which bd
 ls -la .bass-agents/custom-agents/
 ```
 
@@ -99,6 +95,25 @@ Each `.agent` file is a self-contained markdown document with a standard structu
 6. **Audit Log** — versioned history of improvements
 7. **Metadata & Tags** — for discovery and filtering
 
+## Product Boundary
+
+`bass-agents` should not rebuild platform categories that native harnesses are likely to absorb. Avoid turning this repo into a replacement for:
+
+- durable memory stores
+- task queues
+- subagent orchestration
+- worktree management
+- approval UI
+- session transcripts
+- browser/test harnesses
+- model routing
+- cost dashboards
+- CI-style autonomous runners
+
+When a host tool provides a category well, `bass-agents` should map to that native feature and keep only portable doctrine, role prompts, safety policy, and quality expectations.
+
+Before adding or preserving a platform-like feature, run the [Native Capability Radar](workflows/native-capability-radar.md) and record the decision in `docs/research/`.
+
 ## Handoff Contracts
 
 All agents share a universal I/O contract:
@@ -106,7 +121,7 @@ All agents share a universal I/O contract:
 - **AgentTask** (input) — `task_id`, `project`, `goal`, `definition_of_done`, plus optional `context`, `limits`, `memory_enabled`, and `memory_context`. See [`schemas/agent-task.schema.json`](schemas/agent-task.schema.json).
 - **AgentResult** (output) — `task_id`, `status`, `summary`, `findings`, plus optional `next_actions`, `artifacts_produced`, and `memory_updates`. See [`schemas/agent-result.schema.json`](schemas/agent-result.schema.json).
 
-This contract enables agents to hand off work to each other without custom integration.
+This contract is reference material for headless or programmatic workflows. Native Claude/Codex subagents usually return prose to the main session, so schema enforcement is not the default product path.
 
 ## Shared Rules
 
@@ -126,7 +141,7 @@ The `field-notes/` directory captures deployment learnings — what worked, what
 - One file per session or learning (e.g. `2026-02-15-initial-pipeline-run.md`)
 - Use [`field-notes/TEMPLATE.md`](field-notes/TEMPLATE.md) as a starting point for each entry
 
-Field notes are the human-facing session record and an important durable-memory ingestion source. Durable memory can also be updated directly through other valid, evidence-backed flows such as `AgentResult.memory_updates`, imports, validation, compaction, and manual/admin maintenance.
+Field notes are the human-facing feedback record. They should remain useful even when native harnesses provide their own memory and session systems.
 
 ## Session Review (MVP)
 
@@ -190,7 +205,7 @@ Notes:
 - Keep `.agtrace/` local-only (gitignored) so provider paths remain machine-specific and portable across contributors.
 - Dashboard output defaults to `session-reviews/dashboard.html` and can be opened directly in a browser.
 
-Memory dashboard flow:
+Legacy memory dashboard flow:
 
 ```bash
 bass-agents memory dashboard                      # TUI (default)
@@ -220,9 +235,11 @@ To measure whether `bass-agents` improves outcomes versus baseline tool usage:
 - Scoring rubric: [`benchmarks/basic-todo-app/scoring-rubric.md`](benchmarks/basic-todo-app/scoring-rubric.md)
 - Fixed task fixture: [`fixtures/tasks/basic-todo-app-task.json`](fixtures/tasks/basic-todo-app-task.json)
 
-## Durable Memory System
+## Durable Memory System (Deferred)
 
-The durable memory system provides persistent knowledge storage for agents using Beads as the storage layer.
+The durable memory system is legacy/deferred. Native harnesses are absorbing memory and session context, so `bass-agents` should not position Beads-backed memory as a required subsystem.
+
+Beads remains useful as ordinary issue tracking for this repo. Revisit bespoke agent memory only if native harnesses cannot satisfy a concrete cross-harness or headless need.
 
 Field notes and durable memory serve different roles:
 
