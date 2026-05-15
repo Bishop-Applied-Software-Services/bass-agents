@@ -22,6 +22,13 @@ the AgentTask/AgentResult JSON schemas that this repo defines. That contract
 layer only matters in a headless/programmatic runtime. It remains reference
 material, but it is not the default product path.
 
+## Project-local Claude setting
+
+This repo includes `.claude/settings.json` to enable the official Superpowers
+plugin for Claude Code in this project. The plugin is a project-local aid for
+planning, review, and workflow discipline; it is not a `bass-agents` runtime and
+does not replace the native Claude Code subagent system.
+
 ## Native-first conclusion
 
 - Big AI harnesses are absorbing subagents, memory, worktrees, approvals,

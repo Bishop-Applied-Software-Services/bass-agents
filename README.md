@@ -247,19 +247,19 @@ Field notes and durable memory serve different roles:
 - Durable memory stores structured, queryable knowledge for agents.
 - Field notes are an important memory ingestion source, but a new field note is not required for every valid memory update.
 
-### Requirements
+### Legacy Requirements
 
 - **Node.js**: v20.10.6 or later
 - **TypeScript**: v5.3.3 or later
-- **Beads CLI**: Required for memory persistence ([installation instructions](https://github.com/steveyegge/beads))
+- **Beads CLI**: Only needed when working on the deferred memory implementation ([installation instructions](https://github.com/steveyegge/beads))
 
-### Installation
+### Legacy Setup
 
 ```bash
 # Install Node.js dependencies
 npm install
 
-# Install Beads CLI (choose one method)
+# Install Beads CLI only when working on deferred memory code
 npm install -g @beads/bd        # via npm
 brew install beads              # via Homebrew (macOS/Linux)
 go install github.com/steveyegge/beads/cmd/bd@latest  # via Go
@@ -268,7 +268,9 @@ go install github.com/steveyegge/beads/cmd/bd@latest  # via Go
 bd --version
 ```
 
-### Usage
+### Legacy Commands
+
+These commands are retained for reference and maintenance of existing memory code. They are not part of the default native-first setup.
 
 ```bash
 # Initialize project-local durable memory
@@ -311,7 +313,7 @@ npx ts-node scripts/view-memory-stats.ts bass-agents
 npm test
 ```
 
-### Documentation
+### Legacy Documentation
 
 - [Durable Memory PRD](docs/prds/2026-02-22-DURABLE-MEMORY.md)
 - [Concurrent Writes](docs/concurrent-writes.md)
@@ -322,7 +324,7 @@ npm test
 
 1. Copy an existing `.agent` file as a template
 2. Fill in all sections (Core Definition through Metadata)
-3. Ensure the agent accepts `AgentTask` and produces `AgentResult`
+3. For native harness use, adapt the role prompt into the host's agent format. Use `AgentTask` and `AgentResult` only for headless/programmatic workflows.
 4. Add it to `agents/` and re-run `bass-agents install`
 
 See the [full spec](bass-agents-spec-v0.md) for detailed requirements.
