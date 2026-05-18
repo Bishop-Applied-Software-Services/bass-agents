@@ -1,8 +1,8 @@
 # bass-agents
 
-Portable agent doctrine, role definitions, safety posture, and quality rubrics for native coding-agent harnesses.
+**Agents are workflows.** `bass-agents` is portable agent doctrine plus a Temporal workflow library for running multi-step, multi-tool, multi-day agent work durably.
 
-`bass-agents` is not an agent runtime. It is a native-first layer that makes Claude, Codex, and similar tools behave more consistently without replacing their subagents, approvals, memory, worktrees, or session systems.
+Roles (PM, Reviewer, Coder, Evaluator, …) are workflow types. LLM calls and tool invocations are activities. Reviews and approvals are workflow signals. Pipelines are parent workflows composing child workflows. Memory is workflow history. Harnesses (Claude Code, Codex, Cursor) are the activities a workflow calls — not platforms it lives inside.
 
 The repo source of truth is `agents/*.agent`. `bass-agents init` can export project-local custom-agent bundles under `.bass-agents/custom-agents/`, including Claude Code-ready `AGENT.md` files, Codex guidance/config material, and portable `.agent` copies for adapting into other tools.
 
@@ -97,22 +97,20 @@ Each `.agent` file is a self-contained markdown document with a standard structu
 
 ## Product Boundary
 
-`bass-agents` should not rebuild platform categories that native harnesses are likely to absorb. Avoid turning this repo into a replacement for:
+`bass-agents` does not rebuild capabilities that the workflow engine (Temporal) or host harnesses (Claude Code, Codex, Cursor) already provide well. Avoid turning this repo into a replacement for:
 
-- durable memory stores
-- task queues
-- subagent orchestration
-- worktree management
-- approval UI
-- session transcripts
-- browser/test harnesses
-- model routing
-- cost dashboards
-- CI-style autonomous runners
+- workflow engines — use Temporal
+- durable memory stores — workflow history is memory
+- task queues — Temporal task queues
+- retry / timeout policy — Temporal activity options
+- audit logs — workflow event history
+- subagent orchestration in interactive sessions — host harnesses handle it
+- worktree management, approval UI, session transcripts — host harnesses handle it
+- browser/test harnesses — MCP servers and host tools handle it
 
-When a host tool provides a category well, `bass-agents` should map to that native feature and keep only portable doctrine, role prompts, safety policy, and quality expectations.
+When the workflow engine or a host tool provides a capability well, `bass-agents` maps to it and keeps only portable doctrine, role definitions expressed as workflows, safety policy, and quality rubrics.
 
-Before adding or preserving a platform-like feature, run the [Native Capability Radar](workflows/native-capability-radar.md) and record the decision in `docs/research/`.
+Before adding or preserving a platform-like feature, run the [Platform Capability Radar](workflows/platform-capability-radar.md) and record the decision in `docs/research/`.
 
 ## Handoff Contracts
 
@@ -270,7 +268,7 @@ bd --version
 
 ### Legacy Commands
 
-These commands are retained for reference and maintenance of existing memory code. They are not part of the default native-first setup.
+These commands are retained for reference and maintenance of existing memory code. In the workflow frame, durable memory is workflow history (Temporal) — see [`docs/plans/2026-05-17-agents-are-workflows.md`](docs/plans/2026-05-17-agents-are-workflows.md).
 
 ```bash
 # Initialize project-local durable memory

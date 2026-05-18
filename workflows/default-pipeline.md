@@ -1,8 +1,10 @@
 # Default Pipeline
 
-Legacy/reference 7-step orchestration workflow for headless or programmatic `bass-agents` runs.
+7-step orchestration workflow describing how the role agents compose end-to-end: PM → Gameplay → Designer → QA → Coder → Evaluator → Planner.
 
-This is not the default native-harness product path. In Claude Code, Codex, and similar tools, use the host's native subagents, planning, approvals, worktrees, and session state where available. Keep this workflow as a reference for structured handoffs when a native harness cannot satisfy a concrete automation need.
+In the workflow frame ([VISION.md](../VISION.md), [docs/plans/2026-05-17-agents-are-workflows.md](../docs/plans/2026-05-17-agents-are-workflows.md)), this pipeline becomes a Temporal parent workflow composing child workflows for each role. Each role is a workflow type; each LLM/tool call inside it is an activity. The handoffs below become workflow child-execution boundaries.
+
+For interactive use in Claude Code, Codex, or Cursor, use the host's native subagents, planning, approvals, worktrees, and session state directly — the same role definitions ported to those tools.
 
 ---
 

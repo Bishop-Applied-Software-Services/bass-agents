@@ -57,3 +57,15 @@ Revisit runtime work only if native harnesses cannot satisfy a concrete need:
   extra setup/API cost.
 
 Until then, prefer native harness features and keep `bass-agents` additive.
+
+---
+
+## 2026-05-17 reframe — agents are workflows
+
+The "native-first" framing in this document is historical. It defined `bass-agents` by what it isn't (not a runtime, not a competitor to harnesses), which never produced a sharp product description.
+
+The current frame: **agents are workflows.** Every role, tool call, review gate, and memory write is modeled as a Temporal workflow or activity. Harnesses (Claude Code, Codex, Cursor) become the activities a workflow calls. Roles in `agents/*.agent` become workflow types. AgentTask/AgentResult become workflow I/O schemas.
+
+This reframe preserves the migration outcome above — Claude Code subagents are still the right interactive surface for the ported roles. It changes what `bass-agents` itself is: a portable agent doctrine plus a Temporal workflow library for the long-running, multi-step, multi-tool work that interactive sessions can't sustain.
+
+See [`VISION.md`](VISION.md) and [`README.md`](README.md) for the current frame.

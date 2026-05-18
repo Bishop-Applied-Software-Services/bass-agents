@@ -1,4 +1,4 @@
-# Native Capability Radar: <Capability>
+# Platform Capability Radar: <Capability>
 
 - Research date: YYYY-MM-DD
 - Decision owner: <name>
@@ -7,13 +7,14 @@
 
 ## Question
 
-Should `bass-agents` build, keep, demote, or delete this capability given current and likely-native host harness behavior?
+Should `bass-agents` build, keep, demote, or delete this capability given current and likely behavior of the workflow engine (Temporal) and host harnesses (Claude Code, Codex, Cursor, …)?
 
 ## Scope
 
 - In scope:
 - Out of scope:
-- Host tools checked:
+- Workflow engines checked: <Temporal / Inngest / DBOS / Restate / Hatchet / …>
+- Host harnesses checked: <Claude Code / Codex / Cursor / Gemini / …>
 
 ## Sources
 
@@ -23,9 +24,9 @@ Should `bass-agents` build, keep, demote, or delete this capability given curren
 
 ## Capability Map
 
-| Capability slice | Claude | Codex/OpenAI | Other tools | Classification | Confidence |
-| --- | --- | --- | --- | --- | --- |
-| <slice> | <native status> | <native status> | <native status> | <native-now/native-soon/portable-gap/local-only/avoid> | <high/medium/low> |
+| Capability slice | Temporal | Claude Code | Codex/OpenAI | Other | Classification | Confidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| <slice> | <status> | <status> | <status> | <status> | <engine-native/harness-native/engine-soon/harness-soon/portable-gap/local-only/avoid> | <high/medium/low> |
 
 ## Decision
 
