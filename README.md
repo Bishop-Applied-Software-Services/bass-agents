@@ -1,8 +1,10 @@
 # bass-agents
 
-Portable agent definitions and agentic workflows for building great software systems.
+**Agents are workflows.** `bass-agents` is portable agent doctrine plus a Temporal workflow library for running multi-step, multi-tool, multi-day agent work durably.
 
-The repo source of truth is `agents/*.agent`. `bass-agents init` also exports project-local custom-agent bundles under `.bass-agents/custom-agents/`, including Claude Code-ready `AGENT.md` files, Codex multi-agent TOML config, and portable `.agent` copies for adapting into other tools.
+Roles (PM, Reviewer, Coder, Evaluator, …) are workflow types. LLM calls and tool invocations are activities. Reviews and approvals are workflow signals. Pipelines are parent workflows composing child workflows. Memory is workflow history. Harnesses (Claude Code, Codex, Cursor) are the activities a workflow calls — not platforms it lives inside.
+
+The repo source of truth is `agents/*.agent`. `bass-agents init` can export project-local custom-agent bundles under `.bass-agents/custom-agents/`, including Claude Code-ready `AGENT.md` files, Codex guidance/config material, and portable `.agent` copies for adapting into other tools.
 
 ## Directory Structure
 
@@ -41,19 +43,13 @@ git clone <repo-url> && cd bass-agents
 # Install dependencies
 npm install
 
-# Install Beads CLI (required for durable memory system)
-npm install -g @beads/bd
-# OR: brew install beads
-# OR: go install github.com/steveyegge/beads/cmd/bd@latest
-
-# Initialize project-local bass-agents state and generate custom-agent exports
+# Initialize project-local bass-agents state and generate native-agent exports
 ./bin/bass-agents init
 
 # Interactive init will also ask whether to install Claude/Codex custom agents now
 # (or pass --install-custom-agents / --no-install-custom-agents)
 
 # Verify
-which bd
 ls -la .bass-agents/custom-agents/
 ```
 
@@ -99,6 +95,23 @@ Each `.agent` file is a self-contained markdown document with a standard structu
 6. **Audit Log** — versioned history of improvements
 7. **Metadata & Tags** — for discovery and filtering
 
+## Product Boundary
+
+`bass-agents` does not rebuild capabilities that the workflow engine (Temporal) or host harnesses (Claude Code, Codex, Cursor) already provide well. Avoid turning this repo into a replacement for:
+
+- workflow engines — use Temporal
+- durable memory stores — workflow history is memory
+- task queues — Temporal task queues
+- retry / timeout policy — Temporal activity options
+- audit logs — workflow event history
+- subagent orchestration in interactive sessions — host harnesses handle it
+- worktree management, approval UI, session transcripts — host harnesses handle it
+- browser/test harnesses — MCP servers and host tools handle it
+
+When the workflow engine or a host tool provides a capability well, `bass-agents` maps to it and keeps only portable doctrine, role definitions expressed as workflows, safety policy, and quality rubrics.
+
+Before adding or preserving a platform-like feature, run the [Platform Capability Radar](workflows/platform-capability-radar.md) and record the decision in `docs/research/`.
+
 ## Handoff Contracts
 
 All agents share a universal I/O contract:
@@ -106,7 +119,7 @@ All agents share a universal I/O contract:
 - **AgentTask** (input) — `task_id`, `project`, `goal`, `definition_of_done`, plus optional `context`, `limits`, `memory_enabled`, and `memory_context`. See [`schemas/agent-task.schema.json`](schemas/agent-task.schema.json).
 - **AgentResult** (output) — `task_id`, `status`, `summary`, `findings`, plus optional `next_actions`, `artifacts_produced`, and `memory_updates`. See [`schemas/agent-result.schema.json`](schemas/agent-result.schema.json).
 
-This contract enables agents to hand off work to each other without custom integration.
+This contract is reference material for headless or programmatic workflows. Native Claude/Codex subagents usually return prose to the main session, so schema enforcement is not the default product path.
 
 ## Shared Rules
 
@@ -126,7 +139,7 @@ The `field-notes/` directory captures deployment learnings — what worked, what
 - One file per session or learning (e.g. `2026-02-15-initial-pipeline-run.md`)
 - Use [`field-notes/TEMPLATE.md`](field-notes/TEMPLATE.md) as a starting point for each entry
 
-Field notes are the human-facing session record and an important durable-memory ingestion source. Durable memory can also be updated directly through other valid, evidence-backed flows such as `AgentResult.memory_updates`, imports, validation, compaction, and manual/admin maintenance.
+Field notes are the human-facing feedback record. They should remain useful even when native harnesses provide their own memory and session systems.
 
 ## Session Review (MVP)
 
@@ -190,7 +203,7 @@ Notes:
 - Keep `.agtrace/` local-only (gitignored) so provider paths remain machine-specific and portable across contributors.
 - Dashboard output defaults to `session-reviews/dashboard.html` and can be opened directly in a browser.
 
-Memory dashboard flow:
+Legacy memory dashboard flow:
 
 ```bash
 bass-agents memory dashboard                      # TUI (default)
@@ -220,9 +233,11 @@ To measure whether `bass-agents` improves outcomes versus baseline tool usage:
 - Scoring rubric: [`benchmarks/basic-todo-app/scoring-rubric.md`](benchmarks/basic-todo-app/scoring-rubric.md)
 - Fixed task fixture: [`fixtures/tasks/basic-todo-app-task.json`](fixtures/tasks/basic-todo-app-task.json)
 
-## Durable Memory System
+## Durable Memory System (Deferred)
 
-The durable memory system provides persistent knowledge storage for agents using Beads as the storage layer.
+The durable memory system is legacy/deferred. Native harnesses are absorbing memory and session context, so `bass-agents` should not position Beads-backed memory as a required subsystem.
+
+Beads remains useful as ordinary issue tracking for this repo. Revisit bespoke agent memory only if native harnesses cannot satisfy a concrete cross-harness or headless need.
 
 Field notes and durable memory serve different roles:
 
@@ -230,19 +245,19 @@ Field notes and durable memory serve different roles:
 - Durable memory stores structured, queryable knowledge for agents.
 - Field notes are an important memory ingestion source, but a new field note is not required for every valid memory update.
 
-### Requirements
+### Legacy Requirements
 
 - **Node.js**: v20.10.6 or later
 - **TypeScript**: v5.3.3 or later
-- **Beads CLI**: Required for memory persistence ([installation instructions](https://github.com/steveyegge/beads))
+- **Beads CLI**: Only needed when working on the deferred memory implementation ([installation instructions](https://github.com/steveyegge/beads))
 
-### Installation
+### Legacy Setup
 
 ```bash
 # Install Node.js dependencies
 npm install
 
-# Install Beads CLI (choose one method)
+# Install Beads CLI only when working on deferred memory code
 npm install -g @beads/bd        # via npm
 brew install beads              # via Homebrew (macOS/Linux)
 go install github.com/steveyegge/beads/cmd/bd@latest  # via Go
@@ -251,7 +266,9 @@ go install github.com/steveyegge/beads/cmd/bd@latest  # via Go
 bd --version
 ```
 
-### Usage
+### Legacy Commands
+
+These commands are retained for reference and maintenance of existing memory code. In the workflow frame, durable memory is workflow history (Temporal) — see [`docs/plans/2026-05-17-agents-are-workflows.md`](docs/plans/2026-05-17-agents-are-workflows.md).
 
 ```bash
 # Initialize project-local durable memory
@@ -294,7 +311,7 @@ npx ts-node scripts/view-memory-stats.ts bass-agents
 npm test
 ```
 
-### Documentation
+### Legacy Documentation
 
 - [Durable Memory PRD](docs/prds/2026-02-22-DURABLE-MEMORY.md)
 - [Concurrent Writes](docs/concurrent-writes.md)
@@ -305,7 +322,7 @@ npm test
 
 1. Copy an existing `.agent` file as a template
 2. Fill in all sections (Core Definition through Metadata)
-3. Ensure the agent accepts `AgentTask` and produces `AgentResult`
+3. For native harness use, adapt the role prompt into the host's agent format. Use `AgentTask` and `AgentResult` only for headless/programmatic workflows.
 4. Add it to `agents/` and re-run `bass-agents install`
 
 See the [full spec](bass-agents-spec-v0.md) for detailed requirements.
